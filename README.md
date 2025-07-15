@@ -23,14 +23,14 @@ Analyse fuse cartridges, cracks, meter readings (and any future scenario) with *
 $ git clone https://github.com/your-org/intellihubSORpoc.git
 $ cd intellihubSORpoc
 
-# 2. (Optional) create virtual env
-$ python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# 2. (Optional) create virtual env using uv (recommended)
+$ uv venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# 3. Install dependencies
-$ pip install -r requirements.txt     # or: poetry install
+# 3. Install project and dependencies with uv
+$ uv pip install -e .
 ```
 
-> Python 3.10+ is recommended.
+> Python 3.11+ is recommended.
 
 ---
 
@@ -72,6 +72,7 @@ tests/                  # Simple demo / smoke tests
 
 ```bash
 # Lint
+uv pip install ruff mypy pytest  # first-time setup of dev tools
 ruff check src tests scripts
 
 # Type-check
@@ -83,18 +84,3 @@ pytest -q
 
 ### Git Hooks
 Add pre-commit hooks for `ruff`, `mypy`, `pytest` to catch issues early.
-
----
-
-## 🤝 Contributing
-1. Fork & create feature branch
-2. Run **lint + tests** locally
-3. Submit PR – template will ask for description & screenshots
-
-All code must pass CI (ruff, mypy, pytest) & adhere to PEP-8.
-
----
-
-## 📄 License
-
-MIT License – see `LICENSE` file for details.
