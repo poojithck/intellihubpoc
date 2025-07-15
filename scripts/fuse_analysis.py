@@ -13,7 +13,7 @@ import os
 # Add the project root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.tools import FuseAnalyzer
+from src.tools import ImageAnalyzer
 from src.config import ConfigManager
 
 def setup_logging(config_manager: ConfigManager) -> None:
@@ -33,14 +33,14 @@ async def main():
         # Setup logging
         setup_logging(config_manager)
         
-        # Initialize analyzer
-        analyzer = FuseAnalyzer(config_manager)
+        # Initialize analyzer with fuse analysis configuration
+        analyzer = ImageAnalyzer(config_manager, "fuse_analysis")
         
         # Analyze images (uses configured default path)
-        results = await analyzer.analyze_fuse_images()
+        results = await analyzer.analyze_images()
         
         # Display results
-        analyzer.display_results(results, "Fuse Cartridge Analysis")
+        analyzer.display_results(results)
         
     except Exception as e:
         logging.error(f"Analysis failed: {e}")

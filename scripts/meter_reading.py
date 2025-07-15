@@ -14,7 +14,7 @@ from pathlib import Path
 # Add the project root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.tools import ConfigurableAnalyzer
+from src.tools import ImageAnalyzer
 from src.config import ConfigManager
 
 
@@ -25,7 +25,7 @@ async def main():
     config_manager = ConfigManager()
     
     # Initialize analyzer with meter reading configuration
-    analyzer = ConfigurableAnalyzer(config_manager, "meter_reading")
+    analyzer = ImageAnalyzer(config_manager, "meter_reading")
     
     # Set up image directory
     image_dir = Path(__file__).parent.parent / "artefacts" / "Meter Reads"
@@ -42,7 +42,7 @@ async def main():
     results = await analyzer.analyze_images(str(image_dir))
     
     # Display results
-    analyzer.display_results(results, "Meter Reading Analysis")
+    analyzer.display_results(results)
 
 
 if __name__ == "__main__":

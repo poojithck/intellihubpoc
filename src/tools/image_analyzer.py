@@ -10,14 +10,60 @@ from ..clients.bedrock_client import Bedrock_Client
 from ..config import ConfigManager
 
 class ImageAnalyzer:
-    """Generic image analyzer using Bedrock AI with configurable prompts and parsing."""
+    """Configurable image analyzer using Bedrock AI with configuration-based prompts and parsing."""
     
-    def __init__(self, config_manager: ConfigManager):
-        """Initialize the image analyzer with configuration."""
+    def __init__(self, config_manager: ConfigManager, analysis_type: str):
+        """
+        Initialize the image analyzer with configuration.
+        
+        Args:
+            config_manager: ConfigManager instance
+            analysis_type: Name of the analysis type (matches config file name)
+        """
         self.config_manager = config_manager
+        self.analysis_type = analysis_type
         self.bedrock_client = Bedrock_Client.from_config(config_manager)
         self.fallback_parser: Optional[Callable[[str], Dict[str, Any]]] = None
         self.logger = logging.getLogger(__name__)
+        
+        # Load analysis-specific configuration
+        self.prompt_config = config_manager.get_prompt_config(analysis_type)
+        self.model_params = config_manager.get_model_params(
+            config_type=self.prompt_config.get("model_config", "analysis")
+        )
+        
+        # Setup fallback parser automatically
+        self._setup_fallback_parser()
+    
+    def _setup_fallback_parser(self) -> None:
+        """Setup fallback parser from configuration."""
+        if "fallback_keywords" in self.prompt_config:
+            parser = self._create_fallback_parser(self.prompt_config["fallback_keywords"])
+            self.set_fallback_parser(parser)
+    
+    def _create_fallback_parser(self, keywords_config: Dict[str, List[str]]) -> Callable[[str], Dict[str, str]]:
+        """Create a fallback parser based on keyword configuration."""
+        def parser(text: str) -> Dict[str, str]:
+            text = text.strip().lower()
+            
+            positive_keywords = keywords_config.get("positive", ["yes"])
+            negative_keywords = keywords_config.get("negative", ["no"])
+            
+            # Look for indicators
+            if any(keyword in text for keyword in positive_keywords):
+                answer = "Yes"
+            elif any(keyword in text for keyword in negative_keywords):
+                answer = "No"
+            else:
+                answer = "Unknown"
+            
+            # Extract a note (first sentence)
+            sentences = text.split('.')
+            note = sentences[0] if sentences else "No note provided"
+            
+            return {"answer": answer, "note": note}
+        
+        return parser
     
     def set_fallback_parser(self, parser: Callable[[str], Dict[str, Any]]) -> None:
         """Set a custom fallback parser for non-JSON responses."""
@@ -71,17 +117,16 @@ class ImageAnalyzer:
             status="error"
         )
     
-    async def analyze_image_async(self, image_data: Dict[str, str], prompt: str, 
-                                model_params: Dict[str, Any]) -> Dict[str, Any]:
+    async def analyze_image_async(self, image_data: Dict[str, str]) -> Dict[str, Any]:
         """Analyze a single image asynchronously."""
         try:
             self.logger.info(f"Analyzing image: {image_data['name']}")
             
             # Send to Bedrock client using configured parameters
             response = self.bedrock_client.invoke_model(
-                prompt=prompt,
-                max_tokens=model_params.get("max_tokens", 200),
-                temperature=model_params.get("temperature", 0.1),
+                prompt=self.prompt_config["main_prompt"],
+                max_tokens=self.model_params.get("max_tokens", 200),
+                temperature=self.model_params.get("temperature", 0.1),
                 images=[image_data]
             )
             
@@ -114,14 +159,13 @@ class ImageAnalyzer:
             self.logger.error(f"Error analyzing {image_data['name']}: {e}")
             return self._create_error_result(image_data["name"], f"Analysis failed: {str(e)}")
     
-    async def analyze_images_batch(self, encoded_images: List[Dict[str, str]], 
-                                 prompt: str, model_params: Dict[str, Any]) -> List[Dict[str, Any]]:
+    async def analyze_images_batch(self, encoded_images: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         """Analyze multiple images concurrently."""
         self.logger.info(f"Starting batch analysis of {len(encoded_images)} images")
         
         # Create tasks for concurrent processing
         tasks = [
-            self.analyze_image_async(image_data, prompt, model_params) 
+            self.analyze_image_async(image_data) 
             for image_data in encoded_images
         ]
         
@@ -138,10 +182,46 @@ class ImageAnalyzer:
         
         return valid_results
     
-    def display_results(self, results: List[Dict[str, Any]], analysis_type: str = "Analysis") -> None:
+    async def analyze_images(self, image_folder: Optional[str] = None) -> List[Dict[str, Any]]:
+        """
+        Analyze images using the configured analysis type.
+        
+        Args:
+            image_folder: Optional folder path. If None, uses configured default.
+            
+        Returns:
+            List of analysis results
+        """
+        # Use configured default if no folder specified
+        if image_folder is None:
+            app_config = self.config_manager.get_app_config()
+            image_folder = app_config.get("paths", {}).get("default_image_folder", "artefacts")
+        
+        # At this point image_folder is guaranteed to be a string
+        folder_path: str = image_folder or "artefacts"
+        
+        # Ensure we have a valid folder path
+        if not Path(folder_path).exists():
+            self.logger.error(f"Image folder not found: {folder_path}")
+            return []
+        
+        # Load and process images
+        encoded_images = self.load_and_process_images(folder_path)
+        if not encoded_images:
+            self.logger.error("No images to analyze")
+            return []
+        
+        # Analyze images using configured prompt and parameters
+        results = await self.analyze_images_batch(encoded_images)
+        
+        return results
+    
+    def display_results(self, results: List[Dict[str, Any]], analysis_type: Optional[str] = None) -> None:
         """Display analysis results in a readable format."""
+        display_type = analysis_type or self.analysis_type.replace("_", " ").title()
+        
         print("\n" + "="*80)
-        print(f"{analysis_type.upper()} RESULTS")
+        print(f"{display_type.upper()} RESULTS")
         print("="*80)
         
         total_cost = 0.0
@@ -174,108 +254,4 @@ class ImageAnalyzer:
         for status, count in status_counts.items():
             print(f"{status.title()}: {count}")
         print(f"Total cost: ${total_cost:.4f}")
-        print("="*80)
-
-
-class ConfigurableAnalyzer(ImageAnalyzer):
-    """Configurable analyzer that can be used with any prompt configuration."""
-    
-    def __init__(self, config_manager: ConfigManager, analysis_type: str):
-        """
-        Initialize analyzer with a specific analysis configuration.
-        
-        Args:
-            config_manager: ConfigManager instance
-            analysis_type: Name of the analysis type (matches config file name)
-        """
-        super().__init__(config_manager)
-        self.analysis_type = analysis_type
-        
-        # Load analysis-specific configuration
-        self.prompt_config = config_manager.get_prompt_config(analysis_type)
-        self.model_params = config_manager.get_model_params(
-            config_type=self.prompt_config.get("model_config", "analysis")
-        )
-    
-    def create_fallback_parser(self, keywords_config: Dict[str, List[str]]) -> Callable[[str], Dict[str, str]]:
-        """Create a fallback parser based on keyword configuration."""
-        def parser(text: str) -> Dict[str, str]:
-            text = text.strip().lower()
-            
-            positive_keywords = keywords_config.get("positive", ["yes"])
-            negative_keywords = keywords_config.get("negative", ["no"])
-            
-            # Look for indicators
-            if any(keyword in text for keyword in positive_keywords):
-                answer = "Yes"
-            elif any(keyword in text for keyword in negative_keywords):
-                answer = "No"
-            else:
-                answer = "Unknown"
-            
-            # Extract a note (first sentence)
-            sentences = text.split('.')
-            note = sentences[0] if sentences else "No note provided"
-            
-            return {"answer": answer, "note": note}
-        
-        return parser
-    
-    def setup_fallback_parser(self) -> None:
-        """Setup fallback parser from configuration."""
-        if "fallback_keywords" in self.prompt_config:
-            parser = self.create_fallback_parser(self.prompt_config["fallback_keywords"])
-            self.set_fallback_parser(parser)
-    
-    async def analyze_images(self, image_folder: Optional[str] = None) -> List[Dict[str, Any]]:
-        """
-        Analyze images using the configured analysis type.
-        
-        Args:
-            image_folder: Optional folder path. If None, uses configured default.
-            
-        Returns:
-            List of analysis results
-        """
-        # Setup fallback parser
-        self.setup_fallback_parser()
-        
-        # Use configured default if no folder specified
-        if image_folder is None:
-            app_config = self.config_manager.get_app_config()
-            image_folder = app_config.get("paths", {}).get("default_image_folder", "artefacts")
-        
-        # At this point image_folder is guaranteed to be a string
-        folder_path: str = image_folder or "artefacts"
-        
-        # Ensure we have a valid folder path
-        if not Path(folder_path).exists():
-            self.logger.error(f"Image folder not found: {folder_path}")
-            return []
-        
-        # Load and process images
-        encoded_images = self.load_and_process_images(folder_path)
-        if not encoded_images:
-            self.logger.error("No images to analyze")
-            return []
-        
-        # Analyze images using configured prompt and parameters
-        results = await self.analyze_images_batch(
-            encoded_images, 
-            self.prompt_config["main_prompt"], 
-            self.model_params
-        )
-        
-        return results
-
-
-class FuseAnalyzer(ConfigurableAnalyzer):
-    """Specialized analyzer for fuse cartridge analysis."""
-    
-    def __init__(self, config_manager: ConfigManager):
-        """Initialize the fuse analyzer."""
-        super().__init__(config_manager, "fuse_analysis")
-    
-    async def analyze_fuse_images(self, image_folder: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Analyze fuse images from the specified folder."""
-        return await self.analyze_images(image_folder) 
+        print("="*80) 

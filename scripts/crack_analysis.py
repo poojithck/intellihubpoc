@@ -14,7 +14,7 @@ import os
 # Add the project root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.tools import ConfigurableAnalyzer
+from src.tools import ImageAnalyzer
 from src.config import ConfigManager
 
 def setup_logging(config_manager: ConfigManager) -> None:
@@ -35,7 +35,7 @@ async def main():
         setup_logging(config_manager)
         
         # Initialize analyzer with crack analysis configuration
-        analyzer = ConfigurableAnalyzer(config_manager, "crack_analysis")
+        analyzer = ImageAnalyzer(config_manager, "crack_analysis")
         
         # You can specify a custom image folder or use the default
         # analyzer.analyze_images("path/to/crack/images")
@@ -45,7 +45,7 @@ async def main():
         results = await analyzer.analyze_images()
         
         # Display results
-        analyzer.display_results(results, "Crack Analysis")
+        analyzer.display_results(results)
         
     except Exception as e:
         logging.error(f"Analysis failed: {e}")
