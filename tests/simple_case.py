@@ -3,7 +3,7 @@ from src.clients import bedrock_client
 
 def main():
     # Initialize the Bedrock client
-    client = bedrock_client.Bedrock_Client(model_id='anthropic.claude-3-5-sonnet-20241022-v2:0')
+    client = bedrock_client.BedrockClient(model_id='anthropic.claude-3-5-sonnet-20241022-v2:0')
     
     # Test with a simple text prompt
     print("Testing Bedrock client with text prompt...")

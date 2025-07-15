@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import List, Dict, Any, Callable, Optional
 
 from .image_loader import ImageLoader
-from ..clients.bedrock_client import Bedrock_Client
+from ..clients.bedrock_client import BedrockClient
 from ..config import ConfigManager
 
 class ImageAnalyzer:
@@ -22,7 +22,7 @@ class ImageAnalyzer:
         """
         self.config_manager = config_manager
         self.analysis_type = analysis_type
-        self.bedrock_client = Bedrock_Client.from_config(config_manager)
+        self.bedrock_client = BedrockClient.from_config(config_manager)
         self.fallback_parser: Optional[Callable[[str], Dict[str, Any]]] = None
         self.logger = logging.getLogger(__name__)
         

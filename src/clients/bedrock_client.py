@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any, List, Tuple
 import logging
 import base64
 
-class Bedrock_Client:
+class BedrockClient:
     
     def __init__(self, model_id: str, region_name: Optional[str] = 'ap-southeast-2',
                  pricing_config: Optional[Dict[str, float]] = None) -> None:
@@ -38,7 +38,7 @@ class Bedrock_Client:
             raise
     
     @classmethod
-    def from_config(cls, config_manager) -> 'Bedrock_Client':
+    def from_config(cls, config_manager) -> 'BedrockClient':
         """
         Create a Bedrock client from configuration.
         
@@ -46,7 +46,7 @@ class Bedrock_Client:
             config_manager: ConfigManager instance
             
         Returns:
-            Configured Bedrock_Client instance
+            Configured BedrockClient instance
         """
         bedrock_config = config_manager.get_bedrock_client_config()
         pricing_config = config_manager.get_pricing_config()
