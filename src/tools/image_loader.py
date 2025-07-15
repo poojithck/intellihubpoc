@@ -80,17 +80,20 @@ class ImageLoader:
         self._logger.info(f"Loaded {loaded_count} images, {error_count} failed")
         return images
 
-    def resize_images(self, images: List[Tuple[str, Image.Image]], format: str = "PNG", imwidth: int = 900, imheight: int = 900) -> List[Dict[str, str]]:
-        resized_images = []
+    def resize_images(self, images: List[Tuple[str, Image.Image]], imwidth: int = 900, imheight: int = 900) -> List[Tuple[str, Image.Image]]:
+        """Resize images to the specified width and height (keeping aspect ratio simple)."""
+        resized_images: List[Tuple[str, Image.Image]] = []
+
         for name, image in images:
             w, h = image.size
             if w <= imwidth and h <= imheight:
                 resized_images.append((name, image))
                 continue
-            else:
-                resized = image.resize((imwidth, imheight))
-                resized_images.append((name, resized))
-                self._logger.info(f"Resized {name} to {imwidth}x{imheight}")
+
+            resized = image.resize((imwidth, imheight))
+            resized_images.append((name, resized))
+            self._logger.info(f"Resized {name} to {imwidth}x{imheight}")
+
         return resized_images
 
     def encode_images(self, images: List[Tuple[str, Image.Image]], format: str = "PNG") -> List[Dict[str, str]]:

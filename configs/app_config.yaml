@@ -1,0 +1,22 @@
+app:
+  name: "IntelliHub SOR POC"
+  version: "0.1.0"
+  
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  
+image_processing:
+  default_resize:
+    width: 900
+    height: 900
+  supported_formats: ["*.png", "*.jpg", "*.jpeg", "*.bmp", "*.gif", "*.tiff", "*.webp"]
+  max_batch_size: 10
+  default_format: "PNG"
+  
+analysis:
+  concurrent_requests: 5
+  default_timeout: 30
+  
+paths:
+  default_image_folder: "artefacts/Fuse-Replacement-Examples" 

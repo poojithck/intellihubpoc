@@ -1,0 +1,14 @@
+aws:
+  region: "ap-southeast-2"
+  credentials:
+    profile: "default"
+  
+bedrock:
+  default_model: "anthropic.claude-3-5-sonnet-20241022-v2:0"
+  timeout: 30
+  retry_attempts: 3
+  
+pricing:
+  claude_3_5_sonnet:
+    input_price_per_1k: 0.003
+    output_price_per_1k: 0.015 

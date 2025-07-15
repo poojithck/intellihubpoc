@@ -2,22 +2,30 @@ from __future__ import annotations
 
 import boto3
 import json
-from typing import Optional, Dict, Any, List, Tuple, Union
+from typing import Optional, Dict, Any, List, Tuple
 import logging
 import base64
 
 class Bedrock_Client:
     
-    def __init__(self, model_id: str, region_name: Optional[str] = 'ap-southeast-2') -> None:
+    def __init__(self, model_id: str, region_name: Optional[str] = 'ap-southeast-2',
+                 pricing_config: Optional[Dict[str, float]] = None) -> None:
         """
         Initialize the Bedrock client.
         
         Args:
             model_id: The model ID to use (e.g., 'anthropic.claude-3-sonnet-20240229-v1:0')
             region_name: AWS region name (optional, will use default if not specified)
+            pricing_config: Optional pricing configuration for cost calculation
         """
         self.model_id = model_id
         self.region_name = region_name
+        
+        # Set pricing configuration
+        self.pricing_config = pricing_config or {
+            "input_price_per_1k": 0.003,
+            "output_price_per_1k": 0.015
+        }
         
         try:
             if region_name:
@@ -28,6 +36,26 @@ class Bedrock_Client:
         except Exception as e:
             logging.error(f"Failed to initialize Bedrock client: {str(e)}")
             raise
+    
+    @classmethod
+    def from_config(cls, config_manager) -> 'Bedrock_Client':
+        """
+        Create a Bedrock client from configuration.
+        
+        Args:
+            config_manager: ConfigManager instance
+            
+        Returns:
+            Configured Bedrock_Client instance
+        """
+        bedrock_config = config_manager.get_bedrock_client_config()
+        pricing_config = config_manager.get_pricing_config()
+        
+        return cls(
+            model_id=bedrock_config["model_id"],
+            region_name=bedrock_config["region_name"],
+            pricing_config=pricing_config
+        )
     
     def invoke_model(
         self, 
@@ -173,9 +201,9 @@ class Bedrock_Client:
         # Extract generated text
         generated_text = response_body['content'][0]['text']
         
-        # Calculate costs (Claude 3.5 Sonnet pricing)
-        input_price = 0.003 / 1000  # $0.003 per 1K input tokens
-        output_price = 0.015 / 1000  # $0.015 per 1K output tokens
+        # Calculate costs using configured pricing
+        input_price = self.pricing_config["input_price_per_1k"] / 1000
+        output_price = self.pricing_config["output_price_per_1k"] / 1000
         
         input_cost = input_tokens * input_price
         output_cost = output_tokens * output_price
@@ -236,5 +264,65 @@ class Bedrock_Client:
             return True
         except Exception:
             return False
+    
+    def parse_json_response(self, response_text: str, fallback_parser=None) -> Dict[str, Any]:
+        """
+        Parse JSON response from model output, with fallback handling.
+        
+        Args:
+            response_text: The raw text response from the model
+            fallback_parser: Optional function to parse non-JSON responses
+            
+        Returns:
+            Dictionary containing parsed response
+        """
+        try:
+            # Try to extract JSON from the raw text
+            start_idx = response_text.find('{')
+            end_idx = response_text.rfind('}') + 1
+            
+            if start_idx != -1 and end_idx != 0:
+                json_str = response_text[start_idx:end_idx]
+                return json.loads(json_str)
+            else:
+                # No JSON found, use fallback parser if provided
+                if fallback_parser:
+                    return fallback_parser(response_text)
+                else:
+                    return {"raw_text": response_text}
+                    
+        except json.JSONDecodeError:
+            # JSON parsing failed, use fallback parser if provided
+            if fallback_parser:
+                return fallback_parser(response_text)
+            else:
+                return {"raw_text": response_text}
+    
+    def create_analysis_result(self, image_name: str, parsed_response: Dict[str, Any], 
+                             usage_info: Dict[str, Any], status: str = "success") -> Dict[str, Any]:
+        """
+        Create a standardized analysis result structure.
+        
+        Args:
+            image_name: Name of the analyzed image
+            parsed_response: Parsed response from the model
+            usage_info: Token usage and cost information
+            status: Status of the analysis (success, error, etc.)
+            
+        Returns:
+            Standardized result dictionary
+        """
+        base_result = {
+            "image_name": image_name,
+            "status": status,
+            "input_tokens": usage_info.get("input_tokens", 0),
+            "output_tokens": usage_info.get("output_tokens", 0),
+            "input_cost": usage_info.get("input_cost", 0),
+            "output_cost": usage_info.get("output_cost", 0)
+        }
+        
+        # Merge with parsed response
+        base_result.update(parsed_response)
+        return base_result
     
     
