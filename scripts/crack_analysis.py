@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Fuse Analysis Script
+Crack Analysis Script
 
-This script analyzes fuse cartridge images to determine if they have been pulled out.
+This script analyzes images to detect cracks longer than 5mm in surfaces.
+Demonstrates how easy it is to create new analysis types using the tools.
 """
 
 import asyncio
@@ -13,7 +14,7 @@ import os
 # Add the project root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from src.tools import FuseAnalyzer
+from src.tools import ConfigurableAnalyzer
 from src.config import ConfigManager
 
 def setup_logging(config_manager: ConfigManager) -> None:
@@ -25,7 +26,7 @@ def setup_logging(config_manager: ConfigManager) -> None:
     )
 
 async def main():
-    """Main function to run the fuse analysis."""
+    """Main function to run the crack analysis."""
     try:
         # Initialize configuration manager
         config_manager = ConfigManager()
@@ -33,14 +34,18 @@ async def main():
         # Setup logging
         setup_logging(config_manager)
         
-        # Initialize analyzer
-        analyzer = FuseAnalyzer(config_manager)
+        # Initialize analyzer with crack analysis configuration
+        analyzer = ConfigurableAnalyzer(config_manager, "crack_analysis")
         
-        # Analyze images (uses configured default path)
-        results = await analyzer.analyze_fuse_images()
+        # You can specify a custom image folder or use the default
+        # analyzer.analyze_images("path/to/crack/images")
+        
+        # For demo purposes, we'll use the default folder
+        # (you would put crack images in the configured default folder)
+        results = await analyzer.analyze_images()
         
         # Display results
-        analyzer.display_results(results, "Fuse Cartridge Analysis")
+        analyzer.display_results(results, "Crack Analysis")
         
     except Exception as e:
         logging.error(f"Analysis failed: {e}")
