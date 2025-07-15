@@ -12,19 +12,23 @@ from ..config import ConfigManager
 class ImageAnalyzer:
     """Configurable image analyzer using Bedrock AI with configuration-based prompts and parsing."""
     
-    def __init__(self, config_manager: ConfigManager, analysis_type: str):
+    def __init__(self, config_manager: ConfigManager, analysis_type: str, max_concurrent_requests: int = 10):
         """
         Initialize the image analyzer with configuration.
         
         Args:
             config_manager: ConfigManager instance
             analysis_type: Name of the analysis type (matches config file name)
+            max_concurrent_requests: Maximum number of concurrent API requests (default: 10)
         """
         self.config_manager = config_manager
         self.analysis_type = analysis_type
         self.bedrock_client = BedrockClient.from_config(config_manager)
         self.fallback_parser: Optional[Callable[[str], Dict[str, Any]]] = None
         self.logger = logging.getLogger(__name__)
+        
+        # Create semaphore for limiting concurrent requests
+        self.semaphore = asyncio.Semaphore(max_concurrent_requests)
         
         # Load analysis-specific configuration
         self.prompt_config = config_manager.get_prompt_config(analysis_type)
@@ -118,46 +122,47 @@ class ImageAnalyzer:
         )
     
     async def analyze_image_async(self, image_data: Dict[str, str]) -> Dict[str, Any]:
-        """Analyze a single image asynchronously."""
-        try:
-            self.logger.info(f"Analyzing image: {image_data['name']}")
-            
-            # Send to Bedrock client using configured parameters
-            response = self.bedrock_client.invoke_model(
-                prompt=self.prompt_config["main_prompt"],
-                max_tokens=self.model_params.get("max_tokens", 200),
-                temperature=self.model_params.get("temperature", 0.1),
-                images=[image_data]
-            )
-            
-            # Extract the result from the multimodal response
-            if response.get("results") and len(response["results"]) > 0:
-                result = response["results"][0]
+        """Analyze a single image asynchronously with concurrency control."""
+        async with self.semaphore:
+            try:
+                self.logger.info(f"Analyzing image: {image_data['name']}")
                 
-                # Use the Bedrock client's JSON parsing method
-                if "raw_text" in result:
-                    parsed_response = self.bedrock_client.parse_json_response(
-                        result["raw_text"], 
-                        self.fallback_parser
-                    )
-                else:
-                    parsed_response = result
-                
-                # Create standardized result using Bedrock client method
-                return self.bedrock_client.create_analysis_result(
-                    image_name=image_data["name"],
-                    parsed_response=parsed_response,
-                    usage_info=result,
-                    status="success"
+                # Send to Bedrock client using configured parameters
+                response = self.bedrock_client.invoke_model(
+                    prompt=self.prompt_config["main_prompt"],
+                    max_tokens=self.model_params.get("max_tokens", 200),
+                    temperature=self.model_params.get("temperature", 0.1),
+                    images=[image_data]
                 )
                 
-            else:
-                self.logger.error(f"No results returned for {image_data['name']}")
-                return self._create_error_result(image_data["name"], "No response from model")
-                
-        except Exception as e:
-            self.logger.error(f"Error analyzing {image_data['name']}: {e}")
-            return self._create_error_result(image_data["name"], f"Analysis failed: {str(e)}")
+                # Extract the result from the multimodal response
+                if response.get("results") and len(response["results"]) > 0:
+                    result = response["results"][0]
+                    
+                    # Use the Bedrock client's JSON parsing method
+                    if "raw_text" in result:
+                        parsed_response = self.bedrock_client.parse_json_response(
+                            result["raw_text"], 
+                            self.fallback_parser
+                        )
+                    else:
+                        parsed_response = result
+                    
+                    # Create standardized result using Bedrock client method
+                    return self.bedrock_client.create_analysis_result(
+                        image_name=image_data["name"],
+                        parsed_response=parsed_response,
+                        usage_info=result,
+                        status="success"
+                    )
+                    
+                else:
+                    self.logger.error(f"No results returned for {image_data['name']}")
+                    return self._create_error_result(image_data["name"], "No response from model")
+                    
+            except Exception as e:
+                self.logger.error(f"Error analyzing {image_data['name']}: {e}")
+                return self._create_error_result(image_data["name"], f"Analysis failed: {str(e)}")
     
     async def analyze_images_batch(self, encoded_images: List[Dict[str, str]]) -> List[Dict[str, Any]]:
         """Analyze multiple images concurrently."""
@@ -216,29 +221,30 @@ class ImageAnalyzer:
         
         return results
     
-    def display_results(self, results: List[Dict[str, Any]], analysis_type: Optional[str] = None) -> None:
-        """Display analysis results in a readable format."""
+    def format_results(self, results: List[Dict[str, Any]], analysis_type: Optional[str] = None) -> str:
+        """Format analysis results as a readable string."""
         display_type = analysis_type or self.analysis_type.replace("_", " ").title()
         
-        print("\n" + "="*80)
-        print(f"{display_type.upper()} RESULTS")
-        print("="*80)
+        lines = []
+        lines.append("\n" + "="*80)
+        lines.append(f"{display_type.upper()} RESULTS")
+        lines.append("="*80)
         
         total_cost = 0.0
         status_counts = {}
         
         for i, result in enumerate(results, 1):
-            print(f"\n{i}. Image: {result['image_name']}")
-            print(f"   Status: {result.get('status', 'Unknown')}")
+            lines.append(f"\n{i}. Image: {result['image_name']}")
+            lines.append(f"   Status: {result.get('status', 'Unknown')}")
             
             # Display main fields (answer, note, etc.)
             for key, value in result.items():
                 if key not in ['image_name', 'status', 'input_tokens', 'output_tokens', 
                              'input_cost', 'output_cost']:
-                    print(f"   {key.title()}: {value}")
+                    lines.append(f"   {key.title()}: {value}")
             
-            print(f"   Tokens: {result.get('input_tokens', 0)} input, {result.get('output_tokens', 0)} output")
-            print(f"   Cost: ${result.get('input_cost', 0) + result.get('output_cost', 0):.4f}")
+            lines.append(f"   Tokens: {result.get('input_tokens', 0)} input, {result.get('output_tokens', 0)} output")
+            lines.append(f"   Cost: ${result.get('input_cost', 0) + result.get('output_cost', 0):.4f}")
             
             # Count statuses
             status = result.get('status', 'Unknown')
@@ -247,11 +253,18 @@ class ImageAnalyzer:
             total_cost += result.get('input_cost', 0) + result.get('output_cost', 0)
         
         # Summary
-        print("\n" + "-"*80)
-        print("SUMMARY")
-        print("-"*80)
-        print(f"Total images analyzed: {len(results)}")
+        lines.append("\n" + "-"*80)
+        lines.append("SUMMARY")
+        lines.append("-"*80)
+        lines.append(f"Total images analyzed: {len(results)}")
         for status, count in status_counts.items():
-            print(f"{status.title()}: {count}")
-        print(f"Total cost: ${total_cost:.4f}")
-        print("="*80) 
+            lines.append(f"{status.title()}: {count}")
+        lines.append(f"Total cost: ${total_cost:.4f}")
+        lines.append("="*80)
+        
+        return "\n".join(lines)
+    
+    def display_results(self, results: List[Dict[str, Any]], analysis_type: Optional[str] = None) -> None:
+        """Display analysis results in a readable format."""
+        formatted_results = self.format_results(results, analysis_type)
+        print(formatted_results) 

@@ -65,9 +65,14 @@ class ImageLoader:
         loaded_count = 0
         error_count = 0
         
-        # Use pathlib's glob for better performance
-        for pattern in self.SUPPORTED_FORMATS:
-            for img_path in self.image_path.rglob(pattern):
+        # Convert glob patterns to extensions for efficient lookup
+        supported_extensions = {
+            pattern.lower().replace('*', '') for pattern in self.SUPPORTED_FORMATS
+        }
+        
+        # Walk directory tree only once and filter by extension
+        for img_path in self.image_path.rglob('*'):
+            if img_path.is_file() and img_path.suffix.lower() in supported_extensions:
                 try:
                     image = Image.open(img_path)
                     images.append((img_path.name, image))
@@ -81,18 +86,33 @@ class ImageLoader:
         return images
 
     def resize_images(self, images: List[Tuple[str, Image.Image]], imwidth: int = 900, imheight: int = 900) -> List[Tuple[str, Image.Image]]:
-        """Resize images to the specified width and height (keeping aspect ratio simple)."""
+        """Resize images to fit within the specified dimensions while maintaining aspect ratio."""
         resized_images: List[Tuple[str, Image.Image]] = []
 
         for name, image in images:
             w, h = image.size
+            
+            # Skip resizing if image is already smaller than target dimensions
             if w <= imwidth and h <= imheight:
                 resized_images.append((name, image))
                 continue
 
-            resized = image.resize((imwidth, imheight))
+            # Calculate scaling ratio to fit within target dimensions
+            scale_ratio = min(imwidth / w, imheight / h)
+            
+            # Only downscale, never upscale
+            if scale_ratio >= 1.0:
+                resized_images.append((name, image))
+                continue
+                
+            # Calculate new dimensions maintaining aspect ratio
+            new_width = int(w * scale_ratio)
+            new_height = int(h * scale_ratio)
+            
+            # Resize with high-quality resampling
+            resized = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
             resized_images.append((name, resized))
-            self._logger.info(f"Resized {name} to {imwidth}x{imheight}")
+            self._logger.info(f"Resized {name} from {w}x{h} to {new_width}x{new_height}")
 
         return resized_images
 

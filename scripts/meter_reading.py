@@ -7,6 +7,7 @@ Processes images from artefacts/Meter Reads/ folder.
 """
 
 import asyncio
+import logging
 import sys
 import os
 from pathlib import Path
@@ -16,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.tools import ImageAnalyzer
 from src.config import ConfigManager
+from src.utils import setup_logging
 
 
 async def main():
@@ -24,6 +26,9 @@ async def main():
     # Initialize configuration manager
     config_manager = ConfigManager()
     
+    # Setup logging
+    setup_logging(config_manager)
+    
     # Initialize analyzer with meter reading configuration
     analyzer = ImageAnalyzer(config_manager, "meter_reading")
     
@@ -31,12 +36,11 @@ async def main():
     image_dir = Path(__file__).parent.parent / "artefacts" / "Meter Reads"
     
     if not image_dir.exists():
-        print(f"Error: Directory {image_dir} does not exist")
+        logging.error(f"Directory {image_dir} does not exist")
         return
     
-    print("🔍 Starting Meter Reading Analysis...")
-    print(f"📁 Processing images from: {image_dir}")
-    print("-" * 50)
+    logging.info("🔍 Starting Meter Reading Analysis...")
+    logging.info(f"📁 Processing images from: {image_dir}")
     
     # Run analysis
     results = await analyzer.analyze_images(str(image_dir))

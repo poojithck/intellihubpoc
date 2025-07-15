@@ -16,14 +16,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.tools import ImageAnalyzer
 from src.config import ConfigManager
-
-def setup_logging(config_manager: ConfigManager) -> None:
-    """Setup logging based on configuration."""
-    logging_config = config_manager.get_logging_config()
-    logging.basicConfig(
-        level=getattr(logging, logging_config.get("level", "INFO")),
-        format=logging_config.get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
+from src.utils import setup_logging
 
 async def main():
     """Main function to run the crack analysis."""

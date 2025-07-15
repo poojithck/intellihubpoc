@@ -5,6 +5,7 @@ import json
 from typing import Optional, Dict, Any, List, Tuple
 import logging
 import base64
+import binascii
 
 class BedrockClient:
     
@@ -259,10 +260,10 @@ class BedrockClient:
     def _is_base64(self, data: str) -> bool:
         """Check if a string is base64 encoded."""
         try:
-            # Try to decode as base64
-            base64.b64decode(data)
+            # Try to decode as base64 with validation
+            base64.b64decode(data, validate=True)
             return True
-        except Exception:
+        except (binascii.Error, ValueError):
             return False
     
     def parse_json_response(self, response_text: str, fallback_parser=None) -> Dict[str, Any]:

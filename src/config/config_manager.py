@@ -10,14 +10,20 @@ logger = logging.getLogger(__name__)
 class ConfigManager:
     """Manages configuration loading and access for the application."""
     
-    def __init__(self, config_dir: str = "configs"):
+    def __init__(self, config_dir: Optional[str] = None):
         """
         Initialize the configuration manager.
         
         Args:
-            config_dir: Directory containing configuration files
+            config_dir: Directory containing configuration files. If None, uses package root/configs
         """
-        self.config_dir = Path(config_dir)
+        if config_dir is None:
+            # Resolve config directory relative to package root
+            package_root = Path(__file__).parent.parent.parent
+            self.config_dir = package_root / "configs"
+        else:
+            self.config_dir = Path(config_dir)
+        
         self._configs: Dict[str, Dict[str, Any]] = {}
         
         # Ensure config directory exists
