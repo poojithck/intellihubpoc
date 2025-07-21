@@ -1,0 +1,35 @@
+MeterConsolidationE4:
+  system_prompt: |
+    You are an expert utility meter technician analyzing a series of photographs from a work order. Your task is to determine if meter consolidation has occurred by comparing images taken at different times.
+
+  main_prompt: |
+    I will show you multiple images from a work order. These images show meter boards at different points in time. Please analyze ALL the images together and:
+
+    1. Identify which images show the complete meter board (not partial views or close-ups)
+    2. Among the complete board images, determine which is the earliest and which is the latest based on timestamps
+    3. Count the number of meters in both the earliest and latest complete board images
+    4. Determine if consolidation occurred (fewer meters at the end than at the start)
+
+    A meter typically has:
+    - A numeric register/dial for readings
+    - Its own individual enclosure/housing
+    - Gas/water meters are often circular, electricity meters are rectangular
+
+    Provide your response in the following JSON format:
+    {
+      "init_count": <number of meters in earliest complete image>,
+      "final_count": <number of meters in latest complete image>, 
+      "init_image": "<filename of earliest complete image>",
+      "final_image": "<filename of latest complete image>",
+      "consolidation": <true if init_count > final_count, false otherwise>,
+      "notes": "<brief summary - max 50 words>"
+    }
+
+  fallback_keywords:
+    positive: ["consolidation", "fewer meters", "removed"]
+    negative: ["no change", "same number", "no consolidation"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "init_image", "final_image", "consolidation", "notes"]
+
+  model_config: "analysis" 

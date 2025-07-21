@@ -6,6 +6,8 @@ from PIL import Image
 import logging
 import base64
 import io
+from datetime import datetime
+from PIL.ExifTags import TAGS
 
 class ImageLoader:
     """Load and encode images from file system."""
@@ -49,8 +51,12 @@ class ImageLoader:
             raise ValueError(f"Image file not found: {self.image_path}")
         
         try:
+            # Open image first (required for EXIF extraction)
             image = Image.open(self.image_path)
-            self._logger.info(f"Successfully loaded image: {self.image_path}")
+            # Capture timestamp preferring EXIF metadata
+            timestamp = self._extract_timestamp(image, self.image_path)
+            image.info['timestamp'] = timestamp
+            self._logger.info(f"Successfully loaded image: {self.image_path} (timestamp: {timestamp})")
             return image
         except Exception as e:
             self._logger.error(f"Failed to load image {self.image_path}: {e}")
@@ -75,6 +81,10 @@ class ImageLoader:
             if img_path.is_file() and img_path.suffix.lower() in supported_extensions:
                 try:
                     image = Image.open(img_path)
+                    # Store timestamp metadata on the image object (EXIF preferred)
+                    timestamp = self._extract_timestamp(image, img_path)
+                    image.info['timestamp'] = timestamp
+
                     images.append((img_path.name, image))
                     loaded_count += 1
                 except Exception as e:
@@ -84,6 +94,30 @@ class ImageLoader:
         
         self._logger.info(f"Loaded {loaded_count} images, {error_count} failed")
         return images
+
+    def _extract_timestamp(self, image: Image.Image, path: Path) -> str:
+        """Attempt to get creation timestamp from EXIF; fall back to filesystem timestamp."""
+        # Try EXIF first
+        try:
+            exif_data = image.getexif()
+            if exif_data:
+                # Look for DateTimeOriginal (tag 36867) or DateTime (306)
+                for tag_id in (36867, 36868, 306):
+                    date_str = exif_data.get(tag_id)
+                    if date_str:
+                        # EXIF format: 'YYYY:MM:DD HH:MM:SS'
+                        try:
+                            dt = datetime.strptime(str(date_str), "%Y:%m:%d %H:%M:%S")
+                            return dt.isoformat()
+                        except ValueError:
+                            # If parsing fails, continue to next tag/fallback
+                            pass
+        except Exception:
+            pass
+
+        # Fallback to filesystem timestamp (creation if available, else modification)
+        stat_info = path.stat()
+        return datetime.fromtimestamp(getattr(stat_info, 'st_ctime', stat_info.st_mtime)).isoformat()
 
     def resize_images(self, images: List[Tuple[str, Image.Image]], imwidth: int = 900, imheight: int = 900) -> List[Tuple[str, Image.Image]]:
         """Resize images to fit within the specified dimensions while maintaining aspect ratio."""
@@ -140,9 +174,12 @@ class ImageLoader:
                 image.save(buffered, format=format)
                 img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
                 
+                # Retrieve previously stored timestamp (if any)
+                timestamp = image.info.get('timestamp')
                 encoded_images.append({
                     "name": name,
-                    "data": img_str
+                    "data": img_str,
+                    "timestamp": timestamp
                 })
                 
             except Exception as e:

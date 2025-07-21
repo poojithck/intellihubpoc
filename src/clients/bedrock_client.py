@@ -86,6 +86,89 @@ class BedrockClient:
             logging.error(f"Failed to invoke model: {str(e)}")
             raise
     
+    def invoke_model_multi_image(
+        self, 
+        prompt: str, 
+        images: List[Dict[str, str]],
+        max_tokens: int = 1000, 
+        temperature: float = 0.1
+    ) -> Dict[str, Any]:
+        """
+        Invoke model with multiple images in a single request for comparison analysis.
+        
+        Args:
+            prompt: The text prompt to send to the model
+            images: List of image dictionaries with 'name', 'data' (base64), and optional 'timestamp' keys
+            max_tokens: Maximum number of tokens to generate
+            temperature: Controls randomness (0.0 = deterministic, 1.0 = very random)
+            
+        Returns:
+            Dictionary containing the model response and metadata
+        """
+        if not images:
+            raise ValueError("At least one image must be provided")
+        
+        # Build content array with all images and text
+        content = []
+        
+        # Add text prompt first
+        content.append({
+            "type": "text",
+            "text": prompt.strip()
+        })
+        
+        # Add each image with optional timestamp info
+        for i, image_info in enumerate(images):
+            name = image_info['name']
+            image_data = image_info['data']
+            timestamp = image_info.get('timestamp')
+            
+            # Ensure image data is base64 encoded
+            if not self._is_base64(image_data):
+                image_data = base64.b64encode(image_data.encode()).decode()
+            
+            # Add image
+            content.append({
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": "image/png",
+                    "data": image_data
+                }
+            })
+            
+            # Add image metadata as text
+            metadata_text = f"Image {i+1}: {name}"
+            if timestamp:
+                metadata_text += f" (captured: {timestamp})"
+            
+            content.append({
+                "type": "text", 
+                "text": metadata_text
+            })
+        
+        # Build request
+        request_body = {
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": content
+                }
+            ]
+        }
+        
+        response = self.client.invoke_model(
+            modelId=self.model_id,
+            body=json.dumps(request_body),
+            contentType='application/json',
+            accept='application/json'
+        )
+        
+        return self._parse_response(response)
+    
     def _invoke_text_model(self, prompt: str, max_tokens: int, temperature: float) -> Dict[str, Any]:
         """Invoke model with text-only prompt."""
         request_body = {
@@ -134,11 +217,18 @@ class BedrockClient:
         for image_info in images:
             name = image_info['name']
             image_data = image_info['data']
+            timestamp = image_info.get('timestamp')
             
             # Ensure image data is base64 encoded
             if not self._is_base64(image_data):
                 image_data = base64.b64encode(image_data.encode()).decode()
             
+            # Build prompt, optionally prepending timestamp information so the model can reason about temporal order
+            if timestamp:
+                prompt_text = f"Image capture timestamp: {timestamp}. {prompt.strip()}"
+            else:
+                prompt_text = prompt.strip()
+
             messages = [
                 {
                     "role": "user",
@@ -153,7 +243,7 @@ class BedrockClient:
                         },
                         {
                             "type": "text",
-                            "text": prompt.strip()
+                            "text": prompt_text
                         }
                     ]
                 }

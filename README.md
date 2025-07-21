@@ -1,86 +1,107 @@
-# IntelliHub SOR Proof-of-Concept
+# IntelliHub SOR POC
 
-Config-driven, async image-analysis toolkit powered by **AWS Bedrock** multimodal models (Claude 3.5 Sonnet) and Pillow.  
-Analyse fuse cartridges, cracks, meter readings (and any future scenario) with **zero code changes** – just add a YAML prompt.
-
----
-
-## ✨ Key Features
-
-* **Config-first design** – prompts, model parameters and pricing live in `configs/`
-* **Single generic analyzer** – `ImageAnalyzer` handles every use-case via configuration
-* **Async & concurrency-limited** – processes many images without overloading Bedrock
-* **Automatic cost tracking** – see token counts & USD cost per analysis
-* **Pluggable fallback parsing** – robustly extracts answers even from non-JSON output
-* **High-quality image preprocessing** – smart down-scaling, format conversion & base64 encoding
+**Configurable, async image analysis with AWS Bedrock (Claude 3.5 Sonnet) and Pillow.**  
+Analyze fuse cartridges, cracks, meter readings, or any scenario—just add a YAML prompt, no code changes required.
 
 ---
 
-## 📦 Installation
+## 🚀 Quickstart
+
+**Requirements:**  
+- Python **3.11+** (managed by uv, see below)
+- [uv](https://github.com/astral-sh/uv) (install: `pip install uv` or `brew install uv`)
+
+**Setup:**
 
 ```bash
-# 1. Clone repository
-$ git clone https://github.com/your-org/intellihubSORpoc.git
-$ cd intellihubSORpoc
+# 1. Clone the repository
+git clone https://github.com/your-org/intellihubSORpoc.git
+cd intellihubSORpoc
 
-# 2. (Optional) create virtual env using uv (recommended)
-$ uv venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\activate
+# 2. Install Python (if needed) and create a virtual environment
+uv python install 3.11
+uv venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 
-# 3. Install project and dependencies with uv
-$ uv pip install -e .
+# 3. Install dependencies (from pyproject.toml/uv.lock)
+uv pip install -r pyproject.toml
 ```
 
-> Python 3.11+ is recommended.
+**To update dependencies:**
+```bash
+uv pip install --upgrade -r pyproject.toml
+uv pip freeze > uv.lock
+```
 
 ---
 
-## 🚀 Quick Start
+## 🏃 Usage
 
-Analyse fuse cartridges in the default `artefacts/` folder:
-
-```bash
-python scripts/fuse_analysis.py
-```
-
-Analyse meter-reading images in a custom folder:
+Analyze fuse cartridges (default images in `artefacts/`):
 
 ```bash
-python scripts/meter_reading.py --path /path/to/my/images  # (coming soon via CLI helper)
+uv run scripts/fuse_analysis.py
 ```
 
-Add your own analysis type in **3 steps** – see [docs/ANALYSIS_GUIDE.md](docs/ANALYSIS_GUIDE.md).
+Analyze meter readings (custom folder):
+
+```bash
+uv run scripts/meter_reading.py  # edit script to set your folder, or add CLI arg
+```
+
+Add your own analysis type in **3 steps**—see [docs/ANALYSIS_GUIDE.md](docs/ANALYSIS_GUIDE.md).
 
 ---
 
-## 🗂️ Repository Layout
+## 🗂️ Project Structure
 
 ```
-configs/                # YAML config (prompts, models, app, AWS)
-docs/                   # Developer & user documentation
-scripts/                # CLI entry-points for each analysis type
+configs/         # All YAML config (prompts, models, app, AWS)
+docs/            # Guides and developer docs
+scripts/         # CLI entry-points for each analysis type
 src/
- ├── clients/           # BedrockClient – model invocation & cost calc
- ├── config/            # ConfigManager – loads & caches YAML config
- ├── tools/             # ImageAnalyzer & ImageLoader
- └── utils/             # Logging helpers, future CLI utilities
-tests/                  # Simple demo / smoke tests
+  clients/       # BedrockClient (AWS API)
+  config/        # ConfigManager (YAML loader)
+  tools/         # ImageAnalyzer, ImageLoader
+  utils/         # Logging, CLI helpers
+tests/           # Simple test/demo scripts
+pyproject.toml   # Project metadata and dependencies
+uv.lock          # uv lockfile for reproducible installs
 ```
 
 ---
 
-## 🛠️ Development
+## 🧑‍💻 Development
 
 ```bash
+# Install dev tools (one-time)
+uv pip install ruff mypy pytest
+
 # Lint
-uv pip install ruff mypy pytest  # first-time setup of dev tools
 ruff check src tests scripts
 
 # Type-check
 mypy src
 
-# Test (needs mocked AWS creds)
-pytest -q
+# Run tests (requires AWS creds or mocks)
+pytest
 ```
 
-### Git Hooks
-Add pre-commit hooks for `ruff`, `mypy`, `pytest` to catch issues early.
+---
+
+## 📝 Configuration
+
+- **Prompts & analysis logic:** `configs/prompts/*.yaml`
+- **Model params:** `configs/models/claude_config.yaml`
+- **Image processing:** `configs/app_config.yaml`
+- **AWS/Bedrock:** `configs/aws_config.yaml`
+
+See [docs/ANALYSIS_GUIDE.md](docs/ANALYSIS_GUIDE.md) for how to add new analysis types—no code required.
+
+---
+
+## ⚡ About uv
+
+- **uv** is a modern, fast Python package manager and environment tool.
+- It manages Python versions, virtual environments, dependencies, and lockfiles.
+- See [uv documentation](https://github.com/astral-sh/uv) for advanced usage.
