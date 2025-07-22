@@ -15,7 +15,6 @@ class ImageAnalyzer:
     def __init__(self, config_manager: ConfigManager, analysis_type: str, max_concurrent_requests: int = 10):
         """
         Initialize the image analyzer with configuration.
-        
         Args:
             config_manager: ConfigManager instance
             analysis_type: Name of the analysis type (matches config file name)
@@ -70,11 +69,21 @@ class ImageAnalyzer:
         return parser
     
     def set_fallback_parser(self, parser: Callable[[str], Dict[str, Any]]) -> None:
-        """Set a custom fallback parser for non-JSON responses."""
+        """
+        Set a custom fallback parser for non-JSON responses.
+        Args:
+            parser: Callable that takes a string and returns a parsed dict
+        """
         self.fallback_parser = parser
     
     def load_and_process_images(self, image_folder: str) -> List[Dict[str, str]]:
-        """Load, resize, and encode images from the specified folder."""
+        """
+        Load, resize, and encode images from the specified folder.
+        Args:
+            image_folder: Path to the folder containing images
+        Returns:
+            List of dicts with 'name', 'data', and 'timestamp' for each image
+        """
         self.logger.info(f"Loading images from: {image_folder}")
         
         # Get image processing configuration
@@ -113,7 +122,14 @@ class ImageAnalyzer:
         return encoded_images
     
     def _create_error_result(self, image_name: str, error_message: str) -> Dict[str, Any]:
-        """Create a standardized error result."""
+        """
+        Create a standardized error result.
+        Args:
+            image_name: Name of the image
+            error_message: Error message to include
+        Returns:
+            Dict with error information
+        """
         return self.bedrock_client.create_analysis_result(
             image_name=image_name,
             parsed_response={"answer": "Error", "note": error_message},
@@ -122,7 +138,13 @@ class ImageAnalyzer:
         )
     
     async def analyze_image_async(self, image_data: Dict[str, str]) -> Dict[str, Any]:
-        """Analyze a single image asynchronously with concurrency control."""
+        """
+        Analyze a single image asynchronously with concurrency control.
+        Args:
+            image_data: Dict with image data (name, data, timestamp)
+        Returns:
+            Dict with analysis result or error result
+        """
         async with self.semaphore:
             try:
                 self.logger.info(f"Analyzing image: {image_data['name']}")
@@ -165,7 +187,13 @@ class ImageAnalyzer:
                 return self._create_error_result(image_data["name"], f"Analysis failed: {str(e)}")
     
     async def analyze_images_batch(self, encoded_images: List[Dict[str, str]]) -> List[Dict[str, Any]]:
-        """Analyze multiple images concurrently."""
+        """
+        Analyze multiple images concurrently.
+        Args:
+            encoded_images: List of dicts with image data
+        Returns:
+            List of dicts with analysis results
+        """
         self.logger.info(f"Starting batch analysis of {len(encoded_images)} images")
         
         # Create tasks for concurrent processing
@@ -190,12 +218,10 @@ class ImageAnalyzer:
     async def analyze_images(self, image_folder: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Analyze images using the configured analysis type.
-        
         Args:
             image_folder: Optional folder path. If None, uses configured default.
-            
         Returns:
-            List of analysis results
+            List of analysis results (one per image)
         """
         # Use configured default if no folder specified
         if image_folder is None:
@@ -222,7 +248,14 @@ class ImageAnalyzer:
         return results
     
     def format_results(self, results: List[Dict[str, Any]], analysis_type: Optional[str] = None) -> str:
-        """Format analysis results as a readable string."""
+        """
+        Format analysis results as a readable string.
+        Args:
+            results: List of analysis result dicts
+            analysis_type: Optional override for display type
+        Returns:
+            Formatted string for display
+        """
         display_type = analysis_type or self.analysis_type.replace("_", " ").title()
         
         lines = []
@@ -265,6 +298,50 @@ class ImageAnalyzer:
         return "\n".join(lines)
     
     def display_results(self, results: List[Dict[str, Any]], analysis_type: Optional[str] = None) -> None:
-        """Display analysis results in a readable format."""
+        """
+        Display analysis results in a readable format.
+        Args:
+            results: List of analysis result dicts
+            analysis_type: Optional override for display type
+        """
         formatted_results = self.format_results(results, analysis_type)
         print(formatted_results) 
+
+    def analyze_image_grids(self, image_folder: str, gridder: 'ImageGridder', prompt_config: dict = None, model_params: dict = None) -> dict:
+        """
+        Analyze images in a folder as grids for multi-image LLM analysis.
+        Args:
+            image_folder: Path to the folder containing images
+            gridder: An ImageGridder instance
+            prompt_config: Optional prompt config dict (default: self.prompt_config)
+            model_params: Optional model params dict (default: self.model_params)
+        Returns:
+            Dict with 'parsed_response' (parsed model output) and 'raw_response' (original model response)
+            or dict with 'error' key if grid creation fails
+        """
+        from ..clients.bedrock_client import BedrockClient
+        if prompt_config is None:
+            prompt_config = self.prompt_config
+        if model_params is None:
+            model_params = self.model_params
+        # Create grid images
+        grids = gridder.create_grids(image_folder)
+        if not grids:
+            self.logger.error("No grid images could be created from input images.")
+            return {"error": "No grid images created"}
+        # Encode grid images
+        encoded_grids = gridder.encode_grids(grids, format="PNG")
+        # Multi-image analysis
+        response = self.bedrock_client.invoke_model_multi_image(
+            prompt=prompt_config["main_prompt"],
+            images=encoded_grids,
+            max_tokens=model_params.get("max_tokens", 2000),
+            temperature=model_params.get("temperature", 0.1)
+        )
+        response_text = response.get("text", "")
+        response_text = BedrockClient.repair_json_response(response_text)
+        parsed_response = self.bedrock_client.parse_json_response(
+            response_text,
+            self.fallback_parser
+        )
+        return {"parsed_response": parsed_response, "raw_response": response} 

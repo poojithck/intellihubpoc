@@ -15,6 +15,8 @@ class ImageLoader:
     # Supported image formats
     SUPPORTED_FORMATS = ('*.png', '*.jpg', '*.jpeg', '*.bmp', '*.gif', '*.tiff', '*.webp')
     
+    logger = logging.getLogger(__name__)
+
     def __init__(self, image_path: str) -> None:
         """
         Initialize ImageLoader with image path.
@@ -216,28 +218,27 @@ class ImageLoader:
         self._logger.info(f"Successfully encoded {len(encoded_images)} images")
         return encoded_images
 
-    def encode_single_image(self, image: Image.Image, format: str = "PNG") -> str:
+    @staticmethod
+    def encode_single_image(image: Image.Image, format: str = "PNG") -> str:
         """
         Encode a single image to base64 string.
-        
         Args:
             image: PIL Image object
             format: Image format for encoding (default: PNG)
-            
         Returns:
             Base64 encoded image string
+        Raises:
+            OSError: If encoding fails
         """
         try:
             # Convert to RGB if necessary
             if format.upper() in ('JPEG', 'JPG') and image.mode in ('RGBA', 'LA', 'P'):
                 image = image.convert('RGB')
-            
             buffered = io.BytesIO()
             image.save(buffered, format=format)
             return base64.b64encode(buffered.getvalue()).decode("utf-8")
-            
         except Exception as e:
-            self._logger.error(f"Failed to encode image: {e}")
+            ImageLoader.logger.error(f"Failed to encode image: {e}")
             raise OSError(f"Cannot encode image: {e}")
 
     def get_supported_formats(self) -> Tuple[str, ...]:

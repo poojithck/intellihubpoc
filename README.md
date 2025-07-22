@@ -49,6 +49,24 @@ Analyze meter readings (custom folder):
 uv run scripts/meter_reading.py  # edit script to set your folder, or add CLI arg
 ```
 
+**Grid-based (multi-image) analysis example:**
+
+```python
+from src.tools import ImageAnalyzer, ImageGridder
+from src.config import ConfigManager
+
+config_manager = ConfigManager()
+analyzer = ImageAnalyzer(config_manager, "AsbestosBagAndBoard")
+gridder = ImageGridder(config_manager)
+
+# Analyze all images in a folder as grids (multi-image LLM analysis)
+result = analyzer.analyze_image_grids("path/to/images", gridder)
+print(result["parsed_response"])
+```
+
+- For grid-based analysis, grid creation and encoding are now handled by the tools (no manual encoding needed).
+- Model response JSON repair is also handled by the tools (no manual repair in scripts).
+
 Add your own analysis type in **3 steps**—see [docs/ANALYSIS_GUIDE.md](docs/ANALYSIS_GUIDE.md).
 
 ---
@@ -62,7 +80,7 @@ scripts/         # CLI entry-points for each analysis type
 src/
   clients/       # BedrockClient (AWS API)
   config/        # ConfigManager (YAML loader)
-  tools/         # ImageAnalyzer, ImageLoader
+  tools/         # ImageAnalyzer, ImageLoader, ImageGridder
   utils/         # Logging, CLI helpers
 tests/           # Simple test/demo scripts
 pyproject.toml   # Project metadata and dependencies
@@ -97,6 +115,15 @@ pytest
 - **AWS/Bedrock:** `configs/aws_config.yaml`
 
 See [docs/ANALYSIS_GUIDE.md](docs/ANALYSIS_GUIDE.md) for how to add new analysis types—no code required.
+
+---
+
+## 🧑‍💻 Best Practices
+
+- Use `ImageAnalyzer.analyze_images` for single-image or per-image analysis.
+- Use `ImageAnalyzer.analyze_image_grids` with `ImageGridder` for multi-image/grid-based analysis (e.g., when context across images is needed).
+- Let the tools handle grid encoding and model response repair—avoid duplicating this logic in scripts.
+- Keep configuration in YAML files for easy extensibility.
 
 ---
 

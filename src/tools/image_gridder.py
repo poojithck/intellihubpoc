@@ -13,11 +13,21 @@ class ImageGridder:
     Grids are configurable (size, images per grid, borders, labels, etc).
     """
     def __init__(self, config_manager: ConfigManager):
+        """
+        Initialize ImageGridder with configuration from config_manager.
+        Args:
+            config_manager: ConfigManager instance
+        """
         self.config_manager = config_manager
         self.logger = logging.getLogger(__name__)
         self.grid_config = self._get_grid_config()
 
-    def _get_grid_config(self):
+    def _get_grid_config(self) -> dict:
+        """
+        Retrieve grid configuration from app config.
+        Returns:
+            Dictionary with grid configuration parameters
+        """
         app_config = self.config_manager.get_app_config()
         return app_config.get("image_gridder", {
             "images_per_grid": 4,
@@ -31,8 +41,11 @@ class ImageGridder:
     def create_grids(self, image_dir: str, output_dir: Optional[str] = None) -> List[Tuple[str, Image.Image]]:
         """
         Load images from a directory and arrange them into grid images.
-        If output_dir is provided, save each grid image as a PNG to that directory.
-        Returns a list of (grid_name, grid_image) tuples.
+        Args:
+            image_dir: Directory containing images
+            output_dir: Optional directory to save grid images as PNGs
+        Returns:
+            List of (grid_name, grid_image) tuples
         """
         loader = ImageLoader(image_dir)
         images = loader.load_images_to_memory(single=False)
@@ -103,4 +116,25 @@ class ImageGridder:
                 self.logger.info(f"Saved grid image to {save_path}")
             grids.append((grid_name, grid_img))
         self.logger.info(f"Created {len(grids)} grid images from {total_images} input images.")
-        return grids 
+        return grids
+
+    def encode_grids(self, grids: List[Tuple[str, Image.Image]], format: str = "PNG") -> List[dict]:
+        """
+        Encode grid images to base64 for LLM input.
+        Args:
+            grids: List of (name, PIL.Image) tuples
+            format: Image format for encoding (default: PNG)
+        Returns:
+            List of dicts with 'name', 'data', and 'timestamp' (None)
+        """
+        from .image_loader import ImageLoader
+        encoded_grids = []
+        for grid_name, grid_img in grids:
+            encoded_data = ImageLoader.encode_single_image(grid_img, format=format)
+            encoded_grids.append({
+                "name": grid_name,
+                "data": encoded_data,
+                "timestamp": None
+            })
+        self.logger.info(f"Encoded {len(encoded_grids)} grid images for LLM input")
+        return encoded_grids 

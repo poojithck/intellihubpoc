@@ -42,15 +42,7 @@ async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
         raise RuntimeError("No grid images could be created from input images.")
 
     # --- Encode grid images ---
-    from src.tools.image_loader import ImageLoader
-    encoded_grids = []
-    for grid_name, grid_img in grids:
-        encoded_data = ImageLoader.encode_single_image(None, grid_img, format="PNG")
-        encoded_grids.append({
-            "name": grid_name,
-            "data": encoded_data,
-            "timestamp": None
-        })
+    encoded_grids = gridder.encode_grids(grids, format="PNG")
 
     logging.info(f"Loaded {len(encoded_grids)} grid images for multi-image analysis")
 
@@ -66,18 +58,8 @@ async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
     )
 
     response_text = response.get("text", "")
-
-    # Extract and repair truncated JSON
-    json_start = response_text.find('{')
-    if json_start != -1:
-        json_text = response_text[json_start:]
-        if json_text.count('{') > json_text.count('}'):
-            last_comma = json_text.rfind(',')
-            if last_comma > 0:
-                json_text = json_text[:last_comma] + '\n}'
-            else:
-                json_text += '}'
-        response_text = json_text
+    from src.clients.bedrock_client import BedrockClient
+    response_text = BedrockClient.repair_json_response(response_text)
 
     parsed_response = analyzer.bedrock_client.parse_json_response(
         response_text,

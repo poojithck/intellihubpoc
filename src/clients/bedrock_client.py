@@ -389,6 +389,27 @@ class BedrockClient:
             else:
                 return {"raw_text": response_text}
     
+    @staticmethod
+    def repair_json_response(response_text: str) -> str:
+        """
+        Attempt to repair truncated or malformed JSON in a model response.
+        Args:
+            response_text: The raw text response from the model
+        Returns:
+            A string containing the repaired JSON, or the original text if repair is not possible
+        """
+        json_start = response_text.find('{')
+        if json_start != -1:
+            json_text = response_text[json_start:]
+            if json_text.count('{') > json_text.count('}'):
+                last_comma = json_text.rfind(',')
+                if last_comma > 0:
+                    json_text = json_text[:last_comma] + '\n}'
+                else:
+                    json_text += '}'
+            return json_text
+        return response_text
+    
     def create_analysis_result(self, image_name: str, parsed_response: Dict[str, Any], 
                              usage_info: Dict[str, Any], status: str = "success") -> Dict[str, Any]:
         """
