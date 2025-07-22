@@ -49,8 +49,18 @@ class ImageGridder:
 
         # Calculate grid shape (e.g., 2x2, 3x3)
         grid_side = math.ceil(math.sqrt(images_per_grid))
+        font = None
+        label_height = 0
+        if label_images:
+            try:
+                font = ImageFont.truetype("arial.ttf", 24)
+            except Exception:
+                font = ImageFont.load_default()
+            # Estimate label height using a sample string
+            label_height = font.getbbox("Sample")[3] - font.getbbox("Sample")[1] + 6  # add padding
         cell_width = (grid_width - (grid_side + 1) * border_size) // grid_side
         cell_height = (grid_height - (grid_side + 1) * border_size) // grid_side
+        image_height = cell_height - label_height if label_images else cell_height
 
         grids = []
         total_images = len(images)
@@ -59,12 +69,6 @@ class ImageGridder:
         for grid_idx in range(num_grids):
             grid_img = Image.new("RGB", (grid_width, grid_height), background_color)
             draw = ImageDraw.Draw(grid_img)
-            font = None
-            if label_images:
-                try:
-                    font = ImageFont.truetype("arial.ttf", 24)
-                except Exception:
-                    font = ImageFont.load_default()
 
             for i in range(images_per_grid):
                 img_idx = grid_idx * images_per_grid + i
@@ -73,7 +77,7 @@ class ImageGridder:
                 name, img = images[img_idx]
                 # Resize image to fit cell
                 img = img.copy()
-                img.thumbnail((cell_width, cell_height), Image.Resampling.LANCZOS)
+                img.thumbnail((cell_width, image_height), Image.Resampling.LANCZOS)
                 # Calculate position
                 row = i // grid_side
                 col = i % grid_side
@@ -85,7 +89,12 @@ class ImageGridder:
                 if label_images:
                     label_y = y + img.height + 2
                     label_x = x
-                    draw.text((label_x, label_y), name, fill="black", font=font)
+                    # Draw a white rectangle behind the text for readability
+                    text_bbox = font.getbbox(name)
+                    text_w = text_bbox[2] - text_bbox[0]
+                    text_h = text_bbox[3] - text_bbox[1]
+                    draw.rectangle([label_x, label_y, label_x + text_w + 4, label_y + text_h + 4], fill=background_color)
+                    draw.text((label_x + 2, label_y + 2), name, fill="black", font=font)
             grid_name = f"grid_{grid_idx+1:02d}.png"
             if output_dir:
                 Path(output_dir).mkdir(parents=True, exist_ok=True)

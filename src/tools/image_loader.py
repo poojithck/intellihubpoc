@@ -45,6 +45,31 @@ class ImageLoader:
         else:
             return self._load_multiple_images()
 
+    def _apply_exif_orientation(self, image: Image.Image) -> Image.Image:
+        """Apply EXIF orientation to the image if present."""
+        try:
+            exif = image.getexif()
+            orientation_tag = 274  # ExifTags.ORIENTATION
+            if exif and orientation_tag in exif:
+                orientation = exif[orientation_tag]
+                if orientation == 2:
+                    image = image.transpose(Image.FLIP_LEFT_RIGHT)
+                elif orientation == 3:
+                    image = image.rotate(180, expand=True)
+                elif orientation == 4:
+                    image = image.transpose(Image.FLIP_TOP_BOTTOM)
+                elif orientation == 5:
+                    image = image.transpose(Image.FLIP_LEFT_RIGHT).rotate(270, expand=True)
+                elif orientation == 6:
+                    image = image.rotate(270, expand=True)
+                elif orientation == 7:
+                    image = image.transpose(Image.FLIP_LEFT_RIGHT).rotate(90, expand=True)
+                elif orientation == 8:
+                    image = image.rotate(90, expand=True)
+        except Exception:
+            pass
+        return image
+
     def _load_single_image(self) -> Optional[Image.Image]:
         """Load a single image file."""
         if not self.image_path.is_file():
@@ -53,6 +78,7 @@ class ImageLoader:
         try:
             # Open image first (required for EXIF extraction)
             image = Image.open(self.image_path)
+            image = self._apply_exif_orientation(image)
             # Capture timestamp preferring EXIF metadata
             timestamp = self._extract_timestamp(image, self.image_path)
             image.info['timestamp'] = timestamp
@@ -81,6 +107,7 @@ class ImageLoader:
             if img_path.is_file() and img_path.suffix.lower() in supported_extensions:
                 try:
                     image = Image.open(img_path)
+                    image = self._apply_exif_orientation(image)
                     # Store timestamp metadata on the image object (EXIF preferred)
                     timestamp = self._extract_timestamp(image, img_path)
                     image.info['timestamp'] = timestamp
