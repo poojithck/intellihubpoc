@@ -9,6 +9,8 @@ AsbestosBagAndBoard:
 
     Images may be presented as grids, with each grid containing multiple distinct photos separated by whitespace borders. Treat each cell in a grid as a separate photo and analyze all cells in each grid for the required evidence.
 
+    IMPORTANT: Your output must be a single valid JSON object, with no extra text, repeated keys, partial outputs, or explanations. Do not include any markdown, comments, or any other content before or after the JSON.
+
     The National Meter Identifier (NMI) is always a 10-digit number, usually handwritten directly on the bag. If the number is partially obscured, do your best to reconstruct it based on visible digits and context. Ignore any numbers that are not 10 digits or are not written on the bag itself. If you are uncertain, provide your best guess and mention any uncertainty in the Notes field. The date may be in any standard format (e.g., DD/MM/YYYY, YYYY-MM-DD, etc.).
 
     The meter board sticker may be any color or shape, but must mention "asbestos" in the text.
@@ -26,7 +28,7 @@ AsbestosBagAndBoard:
       5. Set Valid_Claim = true if BOTH the asbestos bag image is present AND the meter board has an asbestos sticker.
       6. Add a 'Notes' field (max 25 words) explaining the reason for the Valid_Claim status (e.g., 'missing asbestos sticker', 'all evidence present', or uncertainty about the NMI).
 
-    Return your answer STRICTLY in this JSON structure (no extra keys, no markdown):
+    Return your answer STRICTLY in this JSON structure (no extra keys, no markdown, no repeated keys, and no explanations):
     {
       "Asbestos_bag_image": "<asbestos_bag_filename>",
       "Meter_board_image": "<latest_board_filename>",
@@ -35,6 +37,8 @@ AsbestosBagAndBoard:
       "Valid_Claim": <true|false>,
       "Notes": "<reason for claim status, max 25 words>"
     }
+
+    Do not include any other text, repeated keys, or partial outputs. Only output a single valid JSON object as shown above.
 
   fallback_keywords:
     positive: ["asbestos bag", "asbestos sticker", "identifier", "date", "valid claim"]

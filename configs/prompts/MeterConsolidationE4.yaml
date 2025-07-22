@@ -16,8 +16,12 @@ MeterConsolidationE4:
     
     Always count the number of distinct meter devices, not the number of dials on one device.
 
+    Images may be presented as grids, with each grid containing multiple distinct photos separated by whitespace borders. Treat each cell in a grid as a separate photo and analyze all cells in each grid for the required evidence.
+
+    IMPORTANT: Your output must be a single valid JSON object, with no extra text, repeated keys, partial outputs, or explanations. Do not include any markdown, comments, or any other content before or after the JSON.
+
   main_prompt: |
-    You will receive MULTIPLE images from the same work order, each accompanied by its filename and (if available) capture timestamp.  Analyse ALL images together.
+    You will receive MULTIPLE images from the same work order, each accompanied by its filename and (if available) capture timestamp. Images may be presented as grids, with each grid containing multiple distinct photos separated by whitespace borders. Treat each cell in a grid as a separate photo and analyze all cells in each grid for the required evidence.
     
     Tasks:
       1. From all images, identify which ones show the complete meter board setup (where you can see the main metering area, not just close-ups of individual components).
@@ -27,7 +31,7 @@ MeterConsolidationE4:
       
     IMPORTANT: You should find AT LEAST TWO suitable images for comparison. The init_image and final_image filenames MUST be different unless you truly cannot find two suitable overview images.
     
-    Return your answer STRICTLY in this JSON structure (no extra keys, no markdown):
+    Return your answer STRICTLY in this JSON structure (no extra keys, no markdown, no repeated keys, and no explanations):
     {
       "init_count": <integer>,
       "final_count": <integer>,
@@ -36,6 +40,8 @@ MeterConsolidationE4:
       "consolidation": <true|false>,
       "notes": "<brief (≤30 words) justification mentioning key visual evidence>"
     }
+
+    Do not include any other text, repeated keys, or partial outputs. Only output a single valid JSON object as shown above.
 
   fallback_keywords:
     positive: ["consolidation", "fewer meters", "removed", "reduction"]

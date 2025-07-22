@@ -20,42 +20,46 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.config import ConfigManager
 from src.tools import ImageAnalyzer
+from src.tools.image_gridder import ImageGridder
+from src.tools.image_loader import ImageLoader
 from src.utils import setup_logging
 
 
 async def analyse_meter_consolidation(image_folder: str) -> Dict[str, Any]:
-    """Analyse a folder for meter consolidation using multi-image analysis.
-
-    Returns JSON with required fields.
-    """
+    """Analyse a folder for meter consolidation using multi-image analysis with image grids."""
     folder = Path(image_folder)
     if not folder.exists():
         raise FileNotFoundError(f"Image folder not found: {image_folder}")
 
     config_manager = ConfigManager()
-
-    # Setup logging using existing utility
     setup_logging(config_manager)
-
-    # Initialize analyzer for loading images
     analyzer = ImageAnalyzer(config_manager, "MeterConsolidationE4")
+    gridder = ImageGridder(config_manager)
 
-    # --- Load & encode images (retaining timestamps) ---
-    encoded_images = analyzer.load_and_process_images(image_folder)
-    if not encoded_images:
-        raise RuntimeError("No images found or failed to encode images.")
+    # --- Create grid images ---
+    grids = gridder.create_grids(image_folder, output_dir="artefacts/test_grids")
+    if not grids:
+        raise RuntimeError("No grid images could be created from input images.")
 
-    logging.info(f"Loaded {len(encoded_images)} images for multi-image analysis")
+    # --- Encode grid images ---
+    encoded_grids = []
+    for grid_name, grid_img in grids:
+        encoded_data = ImageLoader.encode_single_image(None, grid_img, format="PNG")
+        encoded_grids.append({
+            "name": grid_name,
+            "data": encoded_data,
+            "timestamp": None
+        })
+
+    logging.info(f"Loaded {len(encoded_grids)} grid images for multi-image analysis")
 
     # --- Use new multi-image analysis method ---
-    # Get prompt configuration
     prompt_config = config_manager.get_prompt_config("MeterConsolidationE4")
     model_params = config_manager.get_model_params(config_type="analysis")
 
-    # Use bedrock client directly for multi-image analysis
     response = analyzer.bedrock_client.invoke_model_multi_image(
         prompt=prompt_config["main_prompt"],
-        images=encoded_images,
+        images=encoded_grids,
         max_tokens=model_params.get("max_tokens", 2000),
         temperature=model_params.get("temperature", 0.1)
     )
@@ -67,16 +71,12 @@ async def analyse_meter_consolidation(image_folder: str) -> Dict[str, Any]:
     json_start = response_text.find('{')
     if json_start != -1:
         json_text = response_text[json_start:]
-        
-        # If truncated (more open braces than close), try to complete it
         if json_text.count('{') > json_text.count('}'):
-            # Find last complete field by looking for last comma before truncation
             last_comma = json_text.rfind(',')
             if last_comma > 0:
                 json_text = json_text[:last_comma] + '\n}'
             else:
                 json_text += '}'
-        
         response_text = json_text
     
     parsed_response = analyzer.bedrock_client.parse_json_response(
