@@ -20,3 +20,10 @@ analysis:
   
 paths:
   default_image_folder: "artefacts/Fuse-Replacement-Examples" 
+image_gridder:
+  images_per_grid: 4         # e.g., 2x2 grid
+  grid_width: 1800           # total width in pixels
+  grid_height: 1800          # total height in pixels
+  border_size: 20            # pixels between images
+  background_color: "#FFFFFF" # white
+  label_images: true         # add filename labels 
