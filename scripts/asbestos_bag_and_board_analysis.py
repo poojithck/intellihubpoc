@@ -22,7 +22,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.config import ConfigManager
 from src.tools import ImageAnalyzer
 from src.utils import setup_logging
-from src.image_gridder import ImageGridder
+from src.tools.image_gridder import ImageGridder
 
 
 async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
@@ -37,7 +37,7 @@ async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
     gridder = ImageGridder(config_manager)
 
     # --- Create grid images ---
-    grids = gridder.create_grids(image_folder)
+    grids = gridder.create_grids(image_folder, output_dir="artefacts/test_grids")
     if not grids:
         raise RuntimeError("No grid images could be created from input images.")
 

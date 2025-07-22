@@ -28,9 +28,10 @@ class ImageGridder:
             "label_images": True
         })
 
-    def create_grids(self, image_dir: str) -> List[Tuple[str, Image.Image]]:
+    def create_grids(self, image_dir: str, output_dir: Optional[str] = None) -> List[Tuple[str, Image.Image]]:
         """
         Load images from a directory and arrange them into grid images.
+        If output_dir is provided, save each grid image as a PNG to that directory.
         Returns a list of (grid_name, grid_image) tuples.
         """
         loader = ImageLoader(image_dir)
@@ -86,6 +87,11 @@ class ImageGridder:
                     label_x = x
                     draw.text((label_x, label_y), name, fill="black", font=font)
             grid_name = f"grid_{grid_idx+1:02d}.png"
+            if output_dir:
+                Path(output_dir).mkdir(parents=True, exist_ok=True)
+                save_path = Path(output_dir) / grid_name
+                grid_img.save(save_path)
+                self.logger.info(f"Saved grid image to {save_path}")
             grids.append((grid_name, grid_img))
         self.logger.info(f"Created {len(grids)} grid images from {total_images} input images.")
         return grids 
