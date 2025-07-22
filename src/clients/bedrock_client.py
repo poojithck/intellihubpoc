@@ -138,7 +138,7 @@ class BedrockClient:
             })
             
             # Add image metadata as text
-            metadata_text = f"Image {i+1}: {name}"
+            metadata_text = f"Image {i+1:02d} of {len(images):02d}: {name}"
             if timestamp:
                 metadata_text += f" (captured: {timestamp})"
             

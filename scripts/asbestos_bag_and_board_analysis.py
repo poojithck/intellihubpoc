@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Meter Consolidation Analysis Script
+Asbestos Bag and Board Analysis Script
 
-Analyzes multiple images from a work order to determine if meter consolidation occurred.
-Uses multi-image analysis to compare all images simultaneously.
+Analyzes multiple images from a work order to:
+- Find a photo of a plastic bag containing asbestos (and extract the national meter identifier and date written on the bag)
+- Find the LATEST meter board photo (and check for an asbestos sticker)
+- Return required fields for claim validation
 """
 
 import asyncio
@@ -14,7 +16,6 @@ from pathlib import Path
 from typing import List, Dict, Any
 import logging
 
-
 # Add the project root to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
@@ -23,8 +24,8 @@ from src.tools import ImageAnalyzer
 from src.utils import setup_logging
 
 
-async def analyse_meter_consolidation(image_folder: str) -> Dict[str, Any]:
-    """Analyse a folder for meter consolidation using multi-image analysis.
+async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
+    """Analyse a folder for asbestos bag and board using multi-image analysis.
 
     Returns JSON with required fields.
     """
@@ -33,12 +34,8 @@ async def analyse_meter_consolidation(image_folder: str) -> Dict[str, Any]:
         raise FileNotFoundError(f"Image folder not found: {image_folder}")
 
     config_manager = ConfigManager()
-
-    # Setup logging using existing utility
     setup_logging(config_manager)
-
-    # Initialize analyzer for loading images
-    analyzer = ImageAnalyzer(config_manager, "MeterConsolidationE4")
+    analyzer = ImageAnalyzer(config_manager, "AsbestosBagAndBoard")
 
     # --- Load & encode images (retaining timestamps) ---
     encoded_images = analyzer.load_and_process_images(image_folder)
@@ -47,12 +44,10 @@ async def analyse_meter_consolidation(image_folder: str) -> Dict[str, Any]:
 
     logging.info(f"Loaded {len(encoded_images)} images for multi-image analysis")
 
-    # --- Use new multi-image analysis method ---
-    # Get prompt configuration
-    prompt_config = config_manager.get_prompt_config("MeterConsolidationE4")
+    # --- Use multi-image analysis method ---
+    prompt_config = config_manager.get_prompt_config("AsbestosBagAndBoard")
     model_params = config_manager.get_model_params(config_type="analysis")
 
-    # Use bedrock client directly for multi-image analysis
     response = analyzer.bedrock_client.invoke_model_multi_image(
         prompt=prompt_config["main_prompt"],
         images=encoded_images,
@@ -60,38 +55,33 @@ async def analyse_meter_consolidation(image_folder: str) -> Dict[str, Any]:
         temperature=model_params.get("temperature", 0.1)
     )
 
-    # Parse the response
     response_text = response.get("text", "")
-    
+
     # Extract and repair truncated JSON
     json_start = response_text.find('{')
     if json_start != -1:
         json_text = response_text[json_start:]
-        
-        # If truncated (more open braces than close), try to complete it
         if json_text.count('{') > json_text.count('}'):
-            # Find last complete field by looking for last comma before truncation
             last_comma = json_text.rfind(',')
             if last_comma > 0:
                 json_text = json_text[:last_comma] + '\n}'
             else:
                 json_text += '}'
-        
         response_text = json_text
-    
+
     parsed_response = analyzer.bedrock_client.parse_json_response(
-        response_text, 
+        response_text,
         analyzer.fallback_parser
     )
 
     # Extract required fields
     result = {
-        "init_count": parsed_response.get("init_count", 0),
-        "final_count": parsed_response.get("final_count", 0),
-        "init_image": parsed_response.get("init_image", ""),
-        "final_image": parsed_response.get("final_image", ""),
-        "consolidation": parsed_response.get("consolidation", False),
-        "notes": parsed_response.get("notes", "Analysis completed"),
+        "Asbestos_bag_image": parsed_response.get("Asbestos_bag_image", ""),
+        "Meter_board_image": parsed_response.get("Meter_board_image", ""),
+        "National_Meter_Identifier": parsed_response.get("National_Meter_Identifier", ""),
+        "Date_On_Bag": parsed_response.get("Date_On_Bag", ""),
+        "Valid_Claim": parsed_response.get("Valid_Claim", False),
+        "Notes": parsed_response.get("Notes", ""),
         "total_cost": response.get("total_cost", 0),
         "input_tokens": response.get("input_tokens", 0),
         "output_tokens": response.get("output_tokens", 0)
@@ -102,7 +92,7 @@ async def analyse_meter_consolidation(image_folder: str) -> Dict[str, Any]:
 
 async def main():
     # Default image directory (matches sample data structure)
-    default_dir = Path(__file__).parent.parent / "artefacts" / "Meter Consolidation" / "Example 4"
+    default_dir = Path(__file__).parent.parent / "artefacts" / "Asbestos" / "279360"
 
     # Allow optional CLI argument to override the default directory
     folder_path = sys.argv[1] if len(sys.argv) > 1 else str(default_dir)
@@ -112,10 +102,10 @@ async def main():
         sys.exit(1)
 
     try:
-        result_json = await analyse_meter_consolidation(folder_path)
+        result_json = await analyse_asbestos_bag_and_board(folder_path)
         print(json.dumps(result_json, indent=2))
     except Exception as e:
-        logging.error(f"Meter consolidation analysis failed: {e}")
+        logging.error(f"Asbestos bag and board analysis failed: {e}")
         raise
 
 
