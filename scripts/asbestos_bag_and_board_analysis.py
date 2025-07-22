@@ -22,13 +22,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from src.config import ConfigManager
 from src.tools import ImageAnalyzer
 from src.utils import setup_logging
+from src.image_gridder import ImageGridder
 
 
 async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
-    """Analyse a folder for asbestos bag and board using multi-image analysis.
-
-    Returns JSON with required fields.
-    """
+    """Analyse a folder for asbestos bag and board using multi-image analysis with image grids."""
     folder = Path(image_folder)
     if not folder.exists():
         raise FileNotFoundError(f"Image folder not found: {image_folder}")
@@ -36,13 +34,25 @@ async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
     config_manager = ConfigManager()
     setup_logging(config_manager)
     analyzer = ImageAnalyzer(config_manager, "AsbestosBagAndBoard")
+    gridder = ImageGridder(config_manager)
 
-    # --- Load & encode images (retaining timestamps) ---
-    encoded_images = analyzer.load_and_process_images(image_folder)
-    if not encoded_images:
-        raise RuntimeError("No images found or failed to encode images.")
+    # --- Create grid images ---
+    grids = gridder.create_grids(image_folder)
+    if not grids:
+        raise RuntimeError("No grid images could be created from input images.")
 
-    logging.info(f"Loaded {len(encoded_images)} images for multi-image analysis")
+    # --- Encode grid images ---
+    from src.tools.image_loader import ImageLoader
+    encoded_grids = []
+    for grid_name, grid_img in grids:
+        encoded_data = ImageLoader.encode_single_image(None, grid_img, format="PNG")
+        encoded_grids.append({
+            "name": grid_name,
+            "data": encoded_data,
+            "timestamp": None
+        })
+
+    logging.info(f"Loaded {len(encoded_grids)} grid images for multi-image analysis")
 
     # --- Use multi-image analysis method ---
     prompt_config = config_manager.get_prompt_config("AsbestosBagAndBoard")
@@ -50,7 +60,7 @@ async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
 
     response = analyzer.bedrock_client.invoke_model_multi_image(
         prompt=prompt_config["main_prompt"],
-        images=encoded_images,
+        images=encoded_grids,
         max_tokens=model_params.get("max_tokens", 2000),
         temperature=model_params.get("temperature", 0.1)
     )
