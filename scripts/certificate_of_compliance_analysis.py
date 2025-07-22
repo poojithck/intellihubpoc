@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Asbestos Bag and Board Analysis Script
+Certificate of Compliance Analysis Script
 
 Analyzes multiple images from a work order to:
-- Find a photo of a plastic bag containing asbestos (and extract the national meter identifier and date written on the bag)
-- Find the LATEST meter board photo (and check for an asbestos sticker)
+- Find a photo or screenshot of a Certificate of Compliance (PDF or hand-filled form)
+- Confirm the presence of 'Electrical Work' and form validity
 - Return required fields for claim validation
 """
 
@@ -13,7 +13,7 @@ import json
 import sys
 import os
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Dict, Any
 import logging
 
 # Add the project root to the Python path
@@ -25,15 +25,15 @@ from src.utils import setup_logging
 from src.tools.image_gridder import ImageGridder
 
 
-async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
-    """Analyse a folder for asbestos bag and board using multi-image analysis with image grids."""
+async def analyse_certificate_of_compliance(image_folder: str) -> Dict[str, Any]:
+    """Analyse a folder for a certificate of compliance using multi-image analysis with image grids."""
     folder = Path(image_folder)
     if not folder.exists():
         raise FileNotFoundError(f"Image folder not found: {image_folder}")
 
     config_manager = ConfigManager()
     setup_logging(config_manager)
-    analyzer = ImageAnalyzer(config_manager, "AsbestosBagAndBoard")
+    analyzer = ImageAnalyzer(config_manager, "CertificateOfCompliance")
     gridder = ImageGridder(config_manager)
 
     # --- Create grid images ---
@@ -55,7 +55,7 @@ async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
     logging.info(f"Loaded {len(encoded_grids)} grid images for multi-image analysis")
 
     # --- Use multi-image analysis method ---
-    prompt_config = config_manager.get_prompt_config("AsbestosBagAndBoard")
+    prompt_config = config_manager.get_prompt_config("CertificateOfCompliance")
     model_params = config_manager.get_model_params(config_type="analysis")
 
     response = analyzer.bedrock_client.invoke_model_multi_image(
@@ -86,11 +86,10 @@ async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
 
     # Extract required fields
     result = {
-        "Asbestos_bag_image": parsed_response.get("Asbestos_bag_image", ""),
-        "Meter_board_image": parsed_response.get("Meter_board_image", ""),
-        "National_Meter_Identifier": parsed_response.get("National_Meter_Identifier", ""),
-        "Date_On_Bag": parsed_response.get("Date_On_Bag", ""),
-        "Valid_Claim": parsed_response.get("Valid_Claim", False),
+        "Certificate_image": parsed_response.get("Certificate_image", ""),
+        "Certificate_type": parsed_response.get("Certificate_type", "none"),
+        "Electrical_Work_Present": parsed_response.get("Electrical_Work_Present", False),
+        "Valid_Certificate": parsed_response.get("Valid_Certificate", False),
         "Notes": parsed_response.get("Notes", ""),
         "total_cost": response.get("total_cost", 0),
         "input_tokens": response.get("input_tokens", 0),
@@ -102,7 +101,7 @@ async def analyse_asbestos_bag_and_board(image_folder: str) -> Dict[str, Any]:
 
 async def main():
     # Default image directory (matches sample data structure)
-    default_dir = Path(__file__).parent.parent / "artefacts" / "Asbestos" / "280659"
+    default_dir = Path(__file__).parent.parent / "artefacts" / "Certificate of Compliance" / "Example 1"
 
     # Allow optional CLI argument to override the default directory
     folder_path = sys.argv[1] if len(sys.argv) > 1 else str(default_dir)
@@ -112,10 +111,10 @@ async def main():
         sys.exit(1)
 
     try:
-        result_json = await analyse_asbestos_bag_and_board(folder_path)
+        result_json = await analyse_certificate_of_compliance(folder_path)
         print(json.dumps(result_json, indent=2))
     except Exception as e:
-        logging.error(f"Asbestos bag and board analysis failed: {e}")
+        logging.error(f"Certificate of compliance analysis failed: {e}")
         raise
 
 
