@@ -121,7 +121,11 @@ class ImageLoader:
                     self._logger.warning(f"Failed to load {img_path}: {e}")
                     continue
         
+        # Sort images by timestamp (creation order) before returning
+        images.sort(key=lambda x: x[1].info.get('timestamp', ''))
+        
         self._logger.info(f"Loaded {loaded_count} images, {error_count} failed")
+        self._logger.info(f"Images sorted by timestamp: {[name for name, _ in images]}")
         return images
 
     def _extract_timestamp(self, image: Image.Image, path: Path) -> str:

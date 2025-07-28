@@ -102,12 +102,34 @@ class ImageGridder:
                 if label_images:
                     label_y = y + img.height + 2
                     label_x = x
-                    # Draw a white rectangle behind the text for readability
+                    
+                    # Handle long filenames by truncating or wrapping
+                    max_text_width = cell_width - 4  # Leave some margin
                     text_bbox = font.getbbox(name)
                     text_w = text_bbox[2] - text_bbox[0]
                     text_h = text_bbox[3] - text_bbox[1]
+                    
+                    # If text is too long, truncate it with ellipsis
+                    if text_w > max_text_width:
+                        # Try to find a good truncation point
+                        truncated_name = name
+                        while truncated_name and font.getbbox(truncated_name + "...")[2] - font.getbbox(truncated_name + "...")[0] > max_text_width:
+                            truncated_name = truncated_name[:-1]
+                        if truncated_name:
+                            display_name = truncated_name + "..."
+                        else:
+                            display_name = "..."
+                    else:
+                        display_name = name
+                    
+                    # Recalculate bbox for the display text
+                    text_bbox = font.getbbox(display_name)
+                    text_w = text_bbox[2] - text_bbox[0]
+                    text_h = text_bbox[3] - text_bbox[1]
+                    
+                    # Draw a white rectangle behind the text for readability
                     draw.rectangle([label_x, label_y, label_x + text_w + 4, label_y + text_h + 4], fill=background_color)
-                    draw.text((label_x + 2, label_y + 2), name, fill="black", font=font)
+                    draw.text((label_x + 2, label_y + 2), display_name, fill="black", font=font)
             grid_name = f"grid_{grid_idx+1:02d}.png"
             if output_dir:
                 Path(output_dir).mkdir(parents=True, exist_ok=True)
