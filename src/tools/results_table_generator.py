@@ -1,0 +1,251 @@
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import List, Dict, Any, Optional
+import pandas as pd
+import json
+
+from ..config import ConfigManager
+
+
+class ResultsTableGenerator:
+    """Converts SOR analysis JSON results into structured table format."""
+    
+    def __init__(self, config_manager: ConfigManager):
+        self.config_manager = config_manager
+        self.logger = logging.getLogger(__name__)
+        self.table_config = self._get_table_config()
+    
+    def _get_table_config(self) -> Dict[str, Any]:
+        """Get table generation configuration from SOR analysis config."""
+        sor_config = self.config_manager.get_config("sor_analysis_config")
+        return sor_config.get("sor_analysis", {}).get("table_generation", {
+            "boolean_fields": {
+                "AsbestosBagAndBoard": "Valid_Claim",
+                "CertificateOfCompliance": "compliance_status",
+                "FuseReplacement": "valid_claim",
+                "MeterConsolidationE4": "valid_consolidation",
+                "PlugInMeterRemoval": "valid_removal",
+                "ServiceProtectionDevices": "valid_installation",
+                "SwitchInstallation": "valid_installation",
+                "NeutralLinkInstallation": "valid_installation",
+                "meter_reading": "valid_reading"
+            },
+            "notes_fields": {
+                "AsbestosBagAndBoard": "Notes",
+                "CertificateOfCompliance": "notes",
+                "FuseReplacement": "notes",
+                "MeterConsolidationE4": "notes",
+                "PlugInMeterRemoval": "notes",
+                "ServiceProtectionDevices": "notes",
+                "SwitchInstallation": "notes",
+                "NeutralLinkInstallation": "notes",
+                "meter_reading": "notes"
+            },
+            "additional_fields": {
+                "AsbestosBagAndBoard": ["National_Meter_Identifier", "Date_On_Bag"],
+                "CertificateOfCompliance": ["certificate_number", "issue_date"],
+                "FuseReplacement": ["fuse_count", "is_even_count"],
+                "MeterConsolidationE4": ["meter_count", "consolidation_type"],
+                "PlugInMeterRemoval": ["meter_type", "removal_method"],
+                "ServiceProtectionDevices": ["device_type", "installation_status"],
+                "SwitchInstallation": ["switch_type", "installation_status"],
+                "NeutralLinkInstallation": ["link_type", "installation_status"],
+                "meter_reading": ["reading_value", "reading_date", "meter_type"]
+            },
+            "output_formats": ["csv", "excel"],
+            "include_metadata": True,
+            "include_costs": True,
+            "sort_by_work_order": True
+        })
+    
+    def generate_table_from_batch_results(self, batch_results: Dict[str, Any]) -> pd.DataFrame:
+        """
+        Generate a structured table from batch SOR analysis results.
+        
+        Args:
+            batch_results: Results from batch work order processing
+            
+        Returns:
+            Pandas DataFrame with work orders as rows and SOR results as columns
+        """
+        work_order_results = batch_results.get("work_order_results", {})
+        
+        if not work_order_results:
+            self.logger.warning("No work order results found")
+            return pd.DataFrame()
+        
+        # Get SOR types from configuration
+        sor_config = self.config_manager.get_config("sor_analysis_config")
+        sor_types = list(sor_config.get("sor_analysis", {}).get("sor_types", {}).keys())
+        
+        # Initialize table data
+        table_data = []
+        
+        for work_order_number, work_order_result in work_order_results.items():
+            row_data = {"Work_Order": work_order_number}
+            
+            # Check if work order processing failed
+            if "error" in work_order_result:
+                # Add error row
+                for sor_type in sor_types:
+                    row_data[f"{sor_type}_Status"] = "ERROR"
+                    row_data[f"{sor_type}_Notes"] = work_order_result["error"]
+                table_data.append(row_data)
+                continue
+            
+            # Extract SOR results
+            sor_results = work_order_result.get("sor_results", {})
+            
+            for sor_type in sor_types:
+                sor_result = sor_results.get(sor_type, {})
+                
+                # Check if SOR analysis failed
+                if "error" in sor_result:
+                    row_data[f"{sor_type}_Status"] = "ERROR"
+                    row_data[f"{sor_type}_Notes"] = sor_result["error"]
+                    continue
+                
+                # Extract boolean status
+                boolean_field = self.table_config["boolean_fields"].get(sor_type)
+                if boolean_field and boolean_field in sor_result:
+                    status = sor_result[boolean_field]
+                    row_data[f"{sor_type}_Status"] = "PASS" if status else "FAIL"
+                else:
+                    row_data[f"{sor_type}_Status"] = "UNKNOWN"
+                
+                # Extract notes
+                notes_field = self.table_config["notes_fields"].get(sor_type)
+                if notes_field and notes_field in sor_result:
+                    row_data[f"{sor_type}_Notes"] = str(sor_result[notes_field])
+                else:
+                    row_data[f"{sor_type}_Notes"] = ""
+                
+                # Extract additional fields
+                additional_fields = self.table_config["additional_fields"].get(sor_type, [])
+                for field in additional_fields:
+                    if field in sor_result:
+                        row_data[f"{sor_type}_{field}"] = str(sor_result[field])
+                    else:
+                        row_data[f"{sor_type}_{field}"] = ""
+            
+            # Add metadata if configured
+            if self.table_config["include_metadata"]:
+                summary = work_order_result.get("summary", {})
+                row_data["Analysis_Timestamp"] = summary.get("analysis_timestamp", "")
+                row_data["Total_Cost"] = summary.get("total_cost", 0)
+                row_data["Input_Tokens"] = summary.get("input_tokens", 0)
+                row_data["Output_Tokens"] = summary.get("output_tokens", 0)
+            
+            table_data.append(row_data)
+        
+        # Create DataFrame
+        df = pd.DataFrame(table_data)
+        
+        # Sort by work order number if configured
+        if self.table_config["sort_by_work_order"] and not df.empty:
+            df = df.sort_values("Work_Order")
+        
+        self.logger.info(f"Generated table with {len(df)} work orders and {len(df.columns)} columns")
+        return df
+    
+    def save_table(self, df: pd.DataFrame, output_path: str, format: str = "csv") -> str:
+        """
+        Save the generated table to file.
+        
+        Args:
+            df: Pandas DataFrame to save
+            output_path: Base path for output file
+            format: Output format ('csv' or 'excel')
+            
+        Returns:
+            Path to saved file
+        """
+        if df.empty:
+            self.logger.warning("No data to save")
+            return ""
+        
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        if format.lower() == "csv":
+            file_path = output_path.with_suffix(".csv")
+            df.to_csv(file_path, index=False)
+            self.logger.info(f"Saved CSV table to: {file_path}")
+            
+        elif format.lower() == "excel":
+            file_path = output_path.with_suffix(".xlsx")
+            df.to_excel(file_path, index=False, engine="openpyxl")
+            self.logger.info(f"Saved Excel table to: {file_path}")
+            
+        else:
+            raise ValueError(f"Unsupported format: {format}")
+        
+        return str(file_path)
+    
+    def generate_summary_statistics(self, df: pd.DataFrame) -> Dict[str, Any]:
+        """
+        Generate summary statistics from the table.
+        
+        Args:
+            df: Pandas DataFrame with SOR results
+            
+        Returns:
+            Dict with summary statistics
+        """
+        if df.empty:
+            return {"error": "No data available"}
+        
+        # Get SOR types from column names
+        sor_columns = [col for col in df.columns if col.endswith("_Status")]
+        sor_types = [col.replace("_Status", "") for col in sor_columns]
+        
+        summary = {
+            "total_work_orders": len(df),
+            "sor_types": sor_types,
+            "sor_results": {}
+        }
+        
+        for sor_type in sor_types:
+            status_col = f"{sor_type}_Status"
+            if status_col in df.columns:
+                status_counts = df[status_col].value_counts()
+                summary["sor_results"][sor_type] = {
+                    "pass": int(status_counts.get("PASS", 0)),
+                    "fail": int(status_counts.get("FAIL", 0)),
+                    "error": int(status_counts.get("ERROR", 0)),
+                    "unknown": int(status_counts.get("UNKNOWN", 0))
+                }
+        
+        # Add metadata if available
+        if "Total_Cost" in df.columns:
+            summary["total_cost"] = float(df["Total_Cost"].sum())
+        if "Input_Tokens" in df.columns:
+            summary["total_input_tokens"] = int(df["Input_Tokens"].sum())
+        if "Output_Tokens" in df.columns:
+            summary["total_output_tokens"] = int(df["Output_Tokens"].sum())
+        
+        return summary
+    
+    def save_summary_report(self, summary: Dict[str, Any], output_path: str) -> str:
+        """
+        Save summary statistics to a JSON file.
+        
+        Args:
+            summary: Summary statistics dict
+            output_path: Base path for output file
+            
+        Returns:
+            Path to saved file
+        """
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        file_path = output_path.with_suffix(".json")
+        
+        with open(file_path, 'w') as f:
+            json.dump(summary, f, indent=2)
+        
+        self.logger.info(f"Saved summary report to: {file_path}")
+        return str(file_path) 

@@ -37,16 +37,21 @@ uv pip freeze > uv.lock
 
 ## 🏃 Usage
 
-Analyze fuse cartridges (default images in `artefacts/`):
+**Unified SOR Processing (Recommended):**
 
+Process all work orders with all SOR types:
 ```bash
-uv run scripts/fuse_analysis.py
+uv run scripts/unified_sor_processor.py --parent-folder path/to/work_orders
 ```
 
-Analyze meter readings (custom folder):
-
+Process specific SOR types only:
 ```bash
-uv run scripts/meter_reading.py  # edit script to set your folder, or add CLI arg
+uv run scripts/unified_sor_processor.py --parent-folder path/to/work_orders --sor-list AsbestosBagAndBoard,FuseReplacement
+```
+
+List available SOR types:
+```bash
+uv run scripts/unified_sor_processor.py --list-sors
 ```
 
 **Grid-based (multi-image) analysis example:**
@@ -64,8 +69,11 @@ result = analyzer.analyze_image_grids("path/to/images", gridder)
 print(result["parsed_response"])
 ```
 
-- For grid-based analysis, grid creation and encoding are now handled by the tools (no manual encoding needed).
-- Model response JSON repair is also handled by the tools (no manual repair in scripts).
+**Key Features:**
+- **Efficient Processing**: Single grid generation per work order, shared across all SOR types
+- **Configuration-Driven**: All SOR types defined in `configs/sor_analysis_config.yaml`
+- **Comprehensive Output**: JSON, CSV, Excel tables with summary statistics
+- **Parallel Processing**: Concurrent work order processing for speed
 
 Add your own analysis type in **3 steps**—see [docs/ANALYSIS_GUIDE.md](docs/ANALYSIS_GUIDE.md).
 
@@ -74,13 +82,13 @@ Add your own analysis type in **3 steps**—see [docs/ANALYSIS_GUIDE.md](docs/AN
 ## 🗂️ Project Structure
 
 ```
-configs/         # All YAML config (prompts, models, app, AWS)
+configs/         # All YAML config (prompts, models, app, AWS, SOR analysis)
 docs/            # Guides and developer docs
-scripts/         # CLI entry-points for each analysis type
+scripts/         # Unified SOR processor and CLI tools
 src/
   clients/       # BedrockClient (AWS API)
   config/        # ConfigManager (YAML loader)
-  tools/         # ImageAnalyzer, ImageLoader, ImageGridder
+  tools/         # ImageAnalyzer, WorkOrderProcessor, ImageGridder, ResultsTableGenerator
   utils/         # Logging, CLI helpers
 tests/           # Simple test/demo scripts
 pyproject.toml   # Project metadata and dependencies
@@ -120,10 +128,11 @@ See [docs/ANALYSIS_GUIDE.md](docs/ANALYSIS_GUIDE.md) for how to add new analysis
 
 ## 🧑‍💻 Best Practices
 
-- Use `ImageAnalyzer.analyze_images` for single-image or per-image analysis.
-- Use `ImageAnalyzer.analyze_image_grids` with `ImageGridder` for multi-image/grid-based analysis (e.g., when context across images is needed).
-- Let the tools handle grid encoding and model response repair—avoid duplicating this logic in scripts.
-- Keep configuration in YAML files for easy extensibility.
+- **Use the Unified SOR Processor** for production batch processing of work orders
+- **Configuration-driven approach**: Define new SOR types in `configs/sor_analysis_config.yaml`
+- **Efficient processing**: The system automatically optimizes grid generation and reuse
+- **Comprehensive output**: Get JSON, CSV, Excel, and summary reports in one run
+- Keep all analysis logic in YAML prompts for easy maintenance and updates
 
 ---
 

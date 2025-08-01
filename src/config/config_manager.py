@@ -220,4 +220,17 @@ class ConfigManager:
                 if subdir_configs:
                     configs["subdirectories"][subdir.name] = subdir_configs
         
-        return configs 
+        return configs
+    
+    def get_config(self, config_name: str, subdirectory: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Get configuration data (alias for load_config for consistency).
+        
+        Args:
+            config_name: Name of the config file (without .yaml extension)
+            subdirectory: Optional subdirectory within configs/
+            
+        Returns:
+            Dictionary containing configuration data
+        """
+        return self.load_config(config_name, subdirectory) 
