@@ -39,14 +39,29 @@ uv pip freeze > uv.lock
 
 **Unified SOR Processing (Recommended):**
 
-Process all work orders with all SOR types:
+Process all work orders with all SOR types (uses config default folder):
+```bash
+uv run scripts/unified_sor_processor.py
+```
+
+Test mode - Process limited work orders:
+```bash
+uv run scripts/unified_sor_processor.py --test-mode
+```
+
+Process specific number of work orders:
+```bash
+uv run scripts/unified_sor_processor.py --max-work-orders 10
+```
+
+Process with custom folder:
 ```bash
 uv run scripts/unified_sor_processor.py --parent-folder path/to/work_orders
 ```
 
 Process specific SOR types only:
 ```bash
-uv run scripts/unified_sor_processor.py --parent-folder path/to/work_orders --sor-list AsbestosBagAndBoard,FuseReplacement
+uv run scripts/unified_sor_processor.py --sor-list AsbestosBagAndBoard,FuseReplacement
 ```
 
 List available SOR types:

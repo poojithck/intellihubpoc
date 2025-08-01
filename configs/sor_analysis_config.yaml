@@ -28,11 +28,11 @@ sor_analysis:
       description: "Analyzes meter board for compliance certificate"
       prompt_config: "CertificateOfCompliance"
       required_fields:
-        - "certificate_image"
-        - "certificate_number"
-        - "issue_date"
-        - "compliance_status"
-        - "notes"
+        - "Certificate_image"
+        - "Certificate_type"
+        - "Electrical_Work_Present"
+        - "Valid_Certificate"
+        - "Notes"
         
     FuseReplacement:
       enabled: true
@@ -50,10 +50,11 @@ sor_analysis:
       description: "Analyzes meter consolidation E4 requirements"
       prompt_config: "MeterConsolidationE4"
       required_fields:
-        - "consolidation_image"
-        - "meter_count"
-        - "consolidation_type"
-        - "valid_consolidation"
+        - "init_count"
+        - "final_count"
+        - "init_image"
+        - "final_image"
+        - "consolidation"
         - "notes"
         
     PlugInMeterRemoval:
@@ -61,10 +62,11 @@ sor_analysis:
       description: "Analyzes plug-in meter removal evidence"
       prompt_config: "PlugInMeterRemoval"
       required_fields:
-        - "removal_image"
-        - "meter_type"
-        - "removal_method"
-        - "valid_removal"
+        - "init_count"
+        - "final_count"
+        - "init_image"
+        - "final_image"
+        - "meters_removed"
         - "notes"
         
     ServiceProtectionDevices:
@@ -72,10 +74,11 @@ sor_analysis:
       description: "Analyzes service protection device installation"
       prompt_config: "ServiceProtectionDevices"
       required_fields:
-        - "device_image"
-        - "device_type"
-        - "installation_status"
-        - "valid_installation"
+        - "init_count"
+        - "final_count"
+        - "init_image"
+        - "final_image"
+        - "devices_added"
         - "notes"
         
     SwitchInstallation:
@@ -83,10 +86,10 @@ sor_analysis:
       description: "Analyzes switch installation evidence"
       prompt_config: "SwitchInstallation"
       required_fields:
-        - "switch_image"
-        - "switch_type"
-        - "installation_status"
-        - "valid_installation"
+        - "init_image"
+        - "final_image"
+        - "switch_installed"
+        - "switch_count"
         - "notes"
         
     NeutralLinkInstallation:
@@ -94,10 +97,11 @@ sor_analysis:
       description: "Analyzes neutral link installation evidence"
       prompt_config: "NeutralLinkInstallation"
       required_fields:
-        - "link_image"
-        - "link_type"
-        - "installation_status"
-        - "valid_installation"
+        - "init_count"
+        - "final_count"
+        - "init_image"
+        - "final_image"
+        - "neutral_link_installed"
         - "notes"
         
     meter_reading:
@@ -105,10 +109,10 @@ sor_analysis:
       description: "Analyzes meter readings from utility meters"
       prompt_config: "meter_reading"
       required_fields:
-        - "meter_image"
-        - "reading_value"
-        - "reading_date"
+        - "most_likely"
+        - "possible_values"
         - "meter_type"
+        - "confidence"
         - "notes"
 
   # Analysis modes
@@ -137,32 +141,35 @@ sor_analysis:
   default_paths:
     single_sor_image_folder: "artefacts/Fuse-Replacement-Examples"
     batch_parent_folder: "C:/Users/George.Nizoridis/OneDrive - Service Stream/Admin/Intellihub AI Analysis/All-WOs"
-    batch_output_folder: "artefacts/batch_results"
+    batch_output_folder: "outputs/batch_results"
     
   # Batch processing configuration
   batch_processing:
     work_order_pattern: r"(WO-[A-Z0-9]+)"  # Extract full work order numbers like WO-EAC2505021264593
     exclude_patterns: ["__pycache__", ".git", "test_grids", "sor_results", "Archive"]
     min_images_per_work_order: 1
-    max_work_orders: null  # null = no limit
+    max_work_orders: null  # null = no limit (process all work orders)
+    test_max_work_orders: 5  # Default test limit when --test-mode is used
     parallel_processing: true
-    max_concurrent_work_orders: 3
+    max_concurrent_work_orders: 8  # Increased from 3 to 8 for better throughput
+    max_concurrent_sor_types: 8  # Process up to 8 SOR types concurrently within each work order (was 4)
+    api_rate_limit_delay: 0.0  # No delay - we're well under rate limits
     
   # Table generation configuration
   table_generation:
     boolean_fields:
       AsbestosBagAndBoard: "Valid_Claim"
-      CertificateOfCompliance: "compliance_status"
+      CertificateOfCompliance: "Valid_Certificate"
       FuseReplacement: "valid_claim"
-      MeterConsolidationE4: "valid_consolidation"
-      PlugInMeterRemoval: "valid_removal"
-      ServiceProtectionDevices: "valid_installation"
-      SwitchInstallation: "valid_installation"
-      NeutralLinkInstallation: "valid_installation"
-      meter_reading: "valid_reading"
+      MeterConsolidationE4: "consolidation"
+      PlugInMeterRemoval: "meters_removed"
+      ServiceProtectionDevices: "devices_added"
+      SwitchInstallation: "switch_installed"
+      NeutralLinkInstallation: "neutral_link_installed"
+      meter_reading: "most_likely"
     notes_fields:
       AsbestosBagAndBoard: "Notes"
-      CertificateOfCompliance: "notes"
+      CertificateOfCompliance: "Notes"
       FuseReplacement: "notes"
       MeterConsolidationE4: "notes"
       PlugInMeterRemoval: "notes"
@@ -172,14 +179,14 @@ sor_analysis:
       meter_reading: "notes"
     additional_fields:
       AsbestosBagAndBoard: ["National_Meter_Identifier", "Date_On_Bag"]
-      CertificateOfCompliance: ["certificate_number", "issue_date"]
+      CertificateOfCompliance: ["Certificate_type", "Electrical_Work_Present"]
       FuseReplacement: ["fuse_count", "is_even_count"]
-      MeterConsolidationE4: ["meter_count", "consolidation_type"]
-      PlugInMeterRemoval: ["meter_type", "removal_method"]
-      ServiceProtectionDevices: ["device_type", "installation_status"]
-      SwitchInstallation: ["switch_type", "installation_status"]
-      NeutralLinkInstallation: ["link_type", "installation_status"]
-      meter_reading: ["reading_value", "reading_date", "meter_type"]
+      MeterConsolidationE4: ["init_count", "final_count"]
+      PlugInMeterRemoval: ["init_count", "final_count"]
+      ServiceProtectionDevices: ["init_count", "final_count"]
+      SwitchInstallation: ["switch_count"]
+      NeutralLinkInstallation: ["init_count", "final_count"]
+      meter_reading: ["possible_values", "meter_type", "confidence"]
     output_formats: ["csv", "excel"]
     include_metadata: true
     include_costs: true
