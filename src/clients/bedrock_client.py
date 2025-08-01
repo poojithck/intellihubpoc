@@ -401,13 +401,45 @@ class BedrockClient:
         json_start = response_text.find('{')
         if json_start != -1:
             json_text = response_text[json_start:]
+            
+            # Handle missing closing braces
             if json_text.count('{') > json_text.count('}'):
                 last_comma = json_text.rfind(',')
                 if last_comma > 0:
                     json_text = json_text[:last_comma] + '\n}'
                 else:
                     json_text += '}'
-            return json_text
+            
+            # Try to parse and validate the JSON
+            try:
+                parsed = json.loads(json_text)
+                # If successful, return the cleaned JSON
+                return json.dumps(parsed, separators=(',', ':'))
+            except json.JSONDecodeError:
+                # If parsing fails, try to extract the first valid JSON object
+                try:
+                    # Find the first complete JSON object
+                    brace_count = 0
+                    end_pos = -1
+                    for i, char in enumerate(json_text):
+                        if char == '{':
+                            brace_count += 1
+                        elif char == '}':
+                            brace_count -= 1
+                            if brace_count == 0:
+                                end_pos = i + 1
+                                break
+                    
+                    if end_pos > 0:
+                        valid_json = json_text[:end_pos]
+                        # Validate by parsing
+                        json.loads(valid_json)
+                        return valid_json
+                except (json.JSONDecodeError, ValueError):
+                    pass
+                
+                # If all else fails, return the original text
+                return json_text
         return response_text
     
     def create_analysis_result(self, image_name: str, parsed_response: Dict[str, Any], 
