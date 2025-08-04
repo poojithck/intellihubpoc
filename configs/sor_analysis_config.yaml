@@ -153,8 +153,19 @@ sor_analysis:
     parallel_processing: true
     max_concurrent_work_orders: 8  # Increased from 3 to 8 for better throughput
     max_concurrent_sor_types: 8  # Process up to 8 SOR types concurrently within each work order (was 4)
-    api_rate_limit_delay: 0.0  # No delay - we're well under rate limits
+    api_rate_limit_delay: 0.0  # No delay - we're well under rate limits with optimized connection pooling
     
+  # CLI configuration defaults
+  cli_defaults:
+    test_mode: false
+    output_format: "both"  # csv, excel, both
+    save_json: true
+    max_work_orders: null  # null = use all available
+    parent_folder: null    # null = use default_paths.batch_parent_folder
+    output_path: null      # null = use default_paths.batch_output_folder with timestamp
+    sor_list: null         # null = use all enabled
+    list_sors: false       # false = normal processing, true = list SOR types and exit
+
   # Table generation configuration
   table_generation:
     boolean_fields:
@@ -178,14 +189,14 @@ sor_analysis:
       NeutralLinkInstallation: "notes"
       meter_reading: "notes"
     additional_fields:
-      AsbestosBagAndBoard: ["National_Meter_Identifier", "Date_On_Bag"]
-      CertificateOfCompliance: ["Certificate_type", "Electrical_Work_Present"]
-      FuseReplacement: ["fuse_count", "is_even_count"]
-      MeterConsolidationE4: ["init_count", "final_count"]
-      PlugInMeterRemoval: ["init_count", "final_count"]
-      ServiceProtectionDevices: ["init_count", "final_count"]
-      SwitchInstallation: ["switch_count"]
-      NeutralLinkInstallation: ["init_count", "final_count"]
+      AsbestosBagAndBoard: ["National_Meter_Identifier", "Date_On_Bag", "Asbestos_bag_image", "Meter_board_image"]
+      CertificateOfCompliance: ["Certificate_type", "Electrical_Work_Present", "Certificate_image"]
+      FuseReplacement: ["fuse_count", "is_even_count", "fuse_image"]
+      MeterConsolidationE4: ["init_count", "final_count", "init_image", "final_image"]
+      PlugInMeterRemoval: ["init_count", "final_count", "init_image", "final_image"]
+      ServiceProtectionDevices: ["init_count", "final_count", "init_image", "final_image"]
+      SwitchInstallation: ["switch_count", "init_image", "final_image"]
+      NeutralLinkInstallation: ["init_count", "final_count", "init_image", "final_image"]
       meter_reading: ["possible_values", "meter_type", "confidence"]
     output_formats: ["csv", "excel"]
     include_metadata: true

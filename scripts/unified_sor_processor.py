@@ -49,9 +49,9 @@ import concurrent.futures
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 from src.config import ConfigManager
-from src.tools import WorkOrderProcessor, ResultsTableGenerator
+from src.tools import ResultsTableGenerator
 from src.tools.image_gridder import ImageGridder
-from src.utils import setup_logging
+from src.utils import setup_logging, CLIConfig
 
 
 class UnifiedSORProcessor:
@@ -70,7 +70,8 @@ class UnifiedSORProcessor:
     def __init__(self, config_manager: ConfigManager):
         self.config_manager = config_manager
         self.sor_config = config_manager.get_config("sor_analysis_config")
-        self.work_order_processor = WorkOrderProcessor(config_manager)
+        # Get work order discovery configuration
+        self.work_order_config = self.sor_config.get("sor_analysis", {}).get("batch_processing", {})
         self.table_generator = ResultsTableGenerator(config_manager)
         self.gridder = ImageGridder(config_manager)
         self.logger = logging.getLogger(__name__)
@@ -109,52 +110,91 @@ class UnifiedSORProcessor:
         
         return valid_sors
     
-    def _create_fallback_parser_for_sor(self, sor_type: str):
-        """Create a simple fallback parser for a specific SOR type."""
-        def fallback_parser(text: str) -> Dict[str, Any]:
-            """Simple fallback parser that extracts basic fields from text."""
-            result = {}
-            
-            # Try to extract common boolean fields
-            boolean_fields = {
-                "valid_claim": ["valid", "claim", "true", "pass", "yes"],
-                "valid_installation": ["valid", "installation", "installed", "true", "pass", "yes"],
-                "valid_consolidation": ["valid", "consolidation", "consolidated", "true", "pass", "yes"],
-                "valid_removal": ["valid", "removal", "removed", "true", "pass", "yes"],
-                "devices_added": ["device", "added", "installed", "true", "pass", "yes"],
-                "meters_removed": ["meter", "removed", "true", "pass", "yes"],
-                "switch_installed": ["switch", "installed", "true", "pass", "yes"],
-                "neutral_link_installed": ["neutral", "link", "installed", "true", "pass", "yes"]
-            }
-            
-            text_lower = text.lower()
-            for field, keywords in boolean_fields.items():
-                result[field] = any(keyword in text_lower for keyword in keywords)
-            
-            # Extract notes if possible
-            result["notes"] = f"Fallback parsing used for {sor_type}"
-            
-            return result
+    def discover_work_orders(self, parent_folder: str) -> List[Dict[str, Any]]:
+        """
+        Discover work order folders in the parent directory.
         
-        return fallback_parser
+        Args:
+            parent_folder: Path to parent folder containing work order sub-folders
+            
+        Returns:
+            List of work order info dicts with 'path', 'work_order_number', 'image_count'
+        """
+        parent_path = Path(parent_folder)
+        if not parent_path.exists() or not parent_path.is_dir():
+            raise ValueError(f"Parent folder not found or not a directory: {parent_folder}")
+        
+        work_orders = []
+        exclude_patterns = self.work_order_config.get("exclude_patterns", [])
+        min_images = self.work_order_config.get("min_images_per_work_order", 1)
+        
+        for subfolder in parent_path.iterdir():
+            if not subfolder.is_dir():
+                continue
+            
+            # Skip excluded patterns
+            if any(exclude in subfolder.name for exclude in exclude_patterns):
+                continue
+            
+            # Use folder name as work order number
+            work_order_number = subfolder.name
+            
+            # Count images in the work order folder
+            image_count = self._count_images_in_folder(subfolder)
+            
+            if image_count >= min_images:
+                work_orders.append({
+                    "path": str(subfolder),
+                    "work_order_number": work_order_number,
+                    "folder_name": subfolder.name,
+                    "image_count": image_count
+                })
+                self.logger.info(f"Found work order {work_order_number} with {image_count} images")
+            else:
+                self.logger.warning(f"Work order {work_order_number} has insufficient images ({image_count})")
+        
+        # Sort by work order number (alphabetical)
+        work_orders.sort(key=lambda x: x["work_order_number"])
+        
+        self.logger.info(f"Discovered {len(work_orders)} work orders for processing")
+        return work_orders
+    
+    def _count_images_in_folder(self, folder_path: Path) -> int:
+        """Count image files in a folder."""
+        from src.tools.image_loader import ImageLoader
+        supported_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp']
+        
+        count = 0
+        for file_path in folder_path.iterdir():
+            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+                count += 1
+        
+        return count
+    
+
     
 
     
     async def _analyze_sor_type(self, sor_type: str, work_order_path: str, 
-                               encoded_grids: List[bytes], work_order_info: Dict[str, Any]) -> Dict[str, Any]:
+                               encoded_grids: List[Dict[str, str]], work_order_info: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a single SOR type using pre-encoded grids and shared BedrockClient."""
         
         # Get pre-loaded prompt configuration for this SOR type
         prompt_config = self.prompt_configs[sor_type]
         model_params = self.model_params
         
-        # Use shared BedrockClient for efficiency (no new client creation)
-        response = self.bedrock_client.invoke_model_multi_image(
-            prompt=prompt_config["main_prompt"],
-            images=encoded_grids,
-            max_tokens=model_params.get("max_tokens", 2000),
-            temperature=model_params.get("temperature", 0.1)
-        )
+        # Run synchronous Bedrock call in thread pool for true async concurrency
+        loop = asyncio.get_event_loop()
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            response = await loop.run_in_executor(
+                executor,
+                lambda: self.bedrock_client.invoke_model_multi_image(
+                    prompt=prompt_config["main_prompt"],
+                    images=encoded_grids,
+                    max_tokens=model_params.get("max_tokens"),
+                    temperature=model_params.get("temperature")
+                )
+            )
         
         # Parse response using shared client
         response_text = response.get("text", "")
@@ -162,7 +202,7 @@ class UnifiedSORProcessor:
         response_text = BedrockClient.repair_json_response(response_text)
         
         # Create simple fallback parser for this SOR type
-        fallback_parser = self._create_fallback_parser_for_sor(sor_type)
+        fallback_parser = BedrockClient.create_fallback_parser(sor_type)
         
         parsed_response = self.bedrock_client.parse_json_response(
             response_text,
@@ -187,15 +227,14 @@ class UnifiedSORProcessor:
     
     async def process_work_orders_batch(self, parent_folder: str, 
                                       sor_types: Optional[List[str]] = None,
-                                      sequential: bool = False,
                                       max_work_orders: Optional[int] = None) -> Dict[str, Any]:
         """
-        Process multiple work orders in batch with efficient grid generation.
+        Process multiple work orders in batch with efficient parallel grid generation.
         
         Args:
             parent_folder: Path to parent folder containing work order sub-folders
             sor_types: List of SOR types to analyze (None = all enabled)
-            sequential: If True, process work orders sequentially instead of parallel
+            max_work_orders: Maximum number of work orders to process (None = all)
             
         Returns:
             Dict with batch results and summary
@@ -212,7 +251,7 @@ class UnifiedSORProcessor:
         self.logger.info(f"Processing {len(sor_types)} SOR types: {', '.join(sor_types)}")
         
         # Discover work orders
-        work_orders = self.work_order_processor.discover_work_orders(parent_folder)
+        work_orders = self.discover_work_orders(parent_folder)
         
         if not work_orders:
             raise ValueError(f"No valid work orders found in: {parent_folder}")
@@ -225,11 +264,8 @@ class UnifiedSORProcessor:
         
         self.logger.info(f"Found {len(work_orders)} work orders to process")
         
-        # Process work orders 
-        if sequential or not self.batch_config.get("parallel_processing", True):
-            results = await self._process_work_orders_sequential(work_orders, sor_types)
-        else:
-            results = await self._process_work_orders_parallel(work_orders, sor_types)
+        # Process work orders (always parallel - sequential mode removed as unused)
+        results = await self._process_work_orders_parallel(work_orders, sor_types)
         
         # Create batch summary
         batch_summary = self._create_batch_summary(work_orders, results, sor_types)
@@ -239,50 +275,14 @@ class UnifiedSORProcessor:
             "work_order_results": results
         }
     
-    async def _process_work_orders_sequential(self, work_orders: List[Dict[str, Any]], 
-                                            sor_types: List[str]) -> Dict[str, Any]:
-        """Process work orders sequentially."""
-        results = {}
-        
-        for work_order in work_orders:
-            try:
-                work_order_number = work_order["work_order_number"]
-                work_order_path = work_order["path"]
-                self.logger.info(f"Processing work order {work_order_number}")
-                
-                # Generate grid images for this work order (memory-only)
-                grids = self.gridder.create_grids(work_order_path, output_dir=None)
-                
-                if not grids:
-                    raise RuntimeError(f"No grid images could be created for work order {work_order_number}")
-                
-                # Encode grids
-                output_format = self.default_settings.get("output_format", "PNG")
-                encoded_grids = self.gridder.encode_grids(grids, format=output_format)
-                
-                self.logger.info(f"Created {len(encoded_grids)} grid images for work order {work_order_number}")
-                
-                # Process SOR types for this work order
-                result = await self._process_sor_types_for_work_order(work_order, sor_types, encoded_grids)
-                results[work_order_number] = result
-                
-            except Exception as e:
-                self.logger.error(f"Failed to process work order {work_order['work_order_number']}: {e}")
-                results[work_order["work_order_number"]] = {
-                    "summary": {
-                        "work_order": work_order["work_order_number"],
-                        "error": str(e)
-                    },
-                    "sor_results": {}
-                }
-        
-        return results
+
     
     async def _process_work_orders_parallel(self, work_orders: List[Dict[str, Any]], 
                                           sor_types: List[str]) -> Dict[str, Any]:
         """Process work orders in parallel with concurrency control."""
-        max_concurrent = self.batch_config.get("max_concurrent_work_orders", 8)  # Increased default
-        semaphore = asyncio.Semaphore(max_concurrent)
+        # Create global semaphore for individual SOR processing across all work orders
+        max_concurrent_sors = self.batch_config.get("max_concurrent_work_orders", 8) * self.batch_config.get("max_concurrent_sor_types", 8)
+        self.global_sor_semaphore = asyncio.Semaphore(max_concurrent_sors)
         
         def create_grids_sync(work_order: Dict[str, Any]) -> tuple[str, Any]:
             """Synchronous grid creation function for thread pool execution."""
@@ -327,12 +327,12 @@ class UnifiedSORProcessor:
                 
                 work_order, encoded_grids = grid_result
                 
-                # Now use semaphore only for API calls (the actual bottleneck)
-                async with semaphore:
-                    result = await self._process_sor_types_for_work_order(
-                        work_order, sor_types, encoded_grids
-                    )
-                    return work_order_number, result
+                # Process SOR types without work order level semaphore
+                # Individual SOR processing will be controlled by global semaphore
+                result = await self._process_sor_types_for_work_order(
+                    work_order, sor_types, encoded_grids
+                )
+                return work_order_number, result
                     
             except Exception as e:
                 self.logger.error(f"Failed to process work order {work_order['work_order_number']}: {e}")
@@ -363,46 +363,67 @@ class UnifiedSORProcessor:
     
     async def _process_sor_types_for_work_order(self, work_order: Dict[str, Any], 
                                               sor_types: List[str], 
-                                              encoded_grids: List[bytes]) -> Dict[str, Any]:
+                                              encoded_grids: List[Dict[str, str]]) -> Dict[str, Any]:
         """Process SOR types for a single work order with pre-created grids."""
         work_order_number = work_order["work_order_number"]
         work_order_path = work_order["path"]
         
         # Process SOR types using shared encoded grids - with concurrent processing
-        max_concurrent_sor_types = self.batch_config.get("max_concurrent_sor_types", 4)
-        api_delay = self.batch_config.get("api_rate_limit_delay", 0.05)
+        api_delay = self.batch_config.get("api_rate_limit_delay")
         
         results = {}
         total_cost = 0
         total_input_tokens = 0
         total_output_tokens = 0
         
-        # Use semaphore to control concurrent SOR processing
-        semaphore = asyncio.Semaphore(max_concurrent_sor_types)
-        
         async def process_single_sor_type(sor_type: str) -> tuple[str, Any]:
             """Process a single SOR type with concurrency control and rate limiting."""
-            async with semaphore:
-                try:
-                    # Small delay to prevent API rate limiting
-                    if api_delay > 0:
-                        await asyncio.sleep(api_delay)
-                    
-                    result = await self._analyze_sor_type(sor_type, work_order_path, encoded_grids, work_order)
-                    self.logger.info(f"Completed {sor_type} analysis for work order {work_order_number}")
-                    return sor_type, result
-                    
-                except Exception as e:
-                    self.logger.error(f"Failed to analyze {sor_type} for work order {work_order_number}: {e}")
-                    error_result = {
-                        "sor_type": sor_type,
-                        "work_order": work_order_number,
-                        "error": str(e),
-                        "total_cost": 0,
-                        "input_tokens": 0,
-                        "output_tokens": 0
-                    }
-                    return sor_type, error_result
+            # Use global semaphore to control concurrent SOR processing across ALL work orders
+            async with self.global_sor_semaphore:
+                max_retries = 10  # Maximum number of retries for throttling
+                base_delay = 1.0  # Base delay in seconds
+                
+                for attempt in range(max_retries + 1):
+                    try:
+                        # Progressive delay for rate limiting and retries
+                        if attempt > 0:
+                            # Exponential backoff: 1s, 2s, 4s, 8s, 16s, 32s, 60s, 60s, 60s, 60s
+                            delay = min(base_delay * (2 ** (attempt - 1)), 60.0)
+                            self.logger.info(f"Retrying {sor_type} for work order {work_order_number} (attempt {attempt + 1}/{max_retries + 1}) after {delay}s delay")
+                            await asyncio.sleep(delay)
+                        elif api_delay > 0:
+                            # Small delay to prevent API rate limiting on first attempt
+                            await asyncio.sleep(api_delay)
+                        
+                        result = await self._analyze_sor_type(sor_type, work_order_path, encoded_grids, work_order)
+                        self.logger.info(f"Completed {sor_type} analysis for work order {work_order_number}")
+                        return sor_type, result
+                        
+                    except Exception as e:
+                        error_message = str(e)
+                        is_retryable = (
+                            "ThrottlingException" in error_message or
+                            "TooManyRequestsException" in error_message or
+                            "ServiceUnavailableException" in error_message or
+                            "InternalServerError" in error_message or
+                            "Timeout" in error_message
+                        )
+                        
+                        if is_retryable and attempt < max_retries:
+                            self.logger.warning(f"Retryable error for {sor_type} (work order {work_order_number}): {error_message}")
+                            continue  # Retry
+                        else:
+                            # Final failure or non-retryable error
+                            self.logger.error(f"Failed to analyze {sor_type} for work order {work_order_number} after {attempt + 1} attempts: {e}")
+                            error_result = {
+                                "sor_type": sor_type,
+                                "work_order": work_order_number,
+                                "error": str(e),
+                                "total_cost": 0,
+                                "input_tokens": 0,
+                                "output_tokens": 0
+                            }
+                            return sor_type, error_result
         
         # Create concurrent tasks for all SOR types
         sor_tasks = [process_single_sor_type(sor_type) for sor_type in sor_types]
@@ -455,22 +476,41 @@ class UnifiedSORProcessor:
         total_input_tokens = sum(r.get("summary", {}).get("total_input_tokens", 0) for r in results.values())
         total_output_tokens = sum(r.get("summary", {}).get("total_output_tokens", 0) for r in results.values())
         
-        # SOR-specific statistics
+        # SOR-specific statistics using correct boolean field names from config
         sor_statistics = {}
+        boolean_field_config = self.sor_config.get("sor_analysis", {}).get("table_generation", {}).get("boolean_fields", {})
+        
         for sor_type in sor_types:
             pass_count = 0
             fail_count = 0
             error_count = 0
             
+            # Get the correct boolean field name for this SOR type
+            boolean_field = boolean_field_config.get(sor_type)
+            
             for work_order_result in results.values():
                 sor_result = work_order_result.get("sor_results", {}).get(sor_type, {})
                 if "error" in sor_result:
                     error_count += 1
-                elif sor_result.get("valid_claim", sor_result.get("valid_installation", 
-                                                                 sor_result.get("valid_consolidation", 
-                                                                               sor_result.get("valid_removal", False)))):
-                    pass_count += 1
+                elif boolean_field and sor_result.get(boolean_field):
+                    # Check if the boolean field exists and is truthy
+                    boolean_value = sor_result.get(boolean_field)
+                    if isinstance(boolean_value, bool):
+                        if boolean_value:
+                            pass_count += 1
+                        else:
+                            fail_count += 1
+                    elif isinstance(boolean_value, str):
+                        # Handle string boolean values like "PASS", "FAIL", "True", "False"
+                        if boolean_value.upper() in ["PASS", "TRUE", "YES", "1"]:
+                            pass_count += 1
+                        else:
+                            fail_count += 1
+                    else:
+                        # If boolean field exists but isn't recognizable, count as fail
+                        fail_count += 1
                 else:
+                    # If no boolean field configured or field not found, count as fail
                     fail_count += 1
             
             sor_statistics[sor_type] = {
@@ -490,9 +530,9 @@ class UnifiedSORProcessor:
             "total_input_tokens": total_input_tokens,
             "total_output_tokens": total_output_tokens,
             "sor_statistics": sor_statistics,
-            "processing_mode": "sequential" if not self.batch_config.get("parallel_processing", True) else "parallel",
-            "max_concurrent_work_orders": self.batch_config.get("max_concurrent_work_orders", 8),
-            "max_concurrent_sor_types": self.batch_config.get("max_concurrent_sor_types", 4),
+            "processing_mode": "parallel_sors_across_work_orders",
+            "max_concurrent_sors_global": self.batch_config.get("max_concurrent_work_orders", 8) * self.batch_config.get("max_concurrent_sor_types", 8),
+            "concurrent_work_orders": "unlimited",
             "api_rate_limit_delay": self.batch_config.get("api_rate_limit_delay", 0.05)
         }
     
@@ -532,172 +572,55 @@ class UnifiedSORProcessor:
 
 
 async def main():
-    """Main function with comprehensive command line argument parsing."""
-    parser = argparse.ArgumentParser(
-        description="Unified SOR Processor - Efficient batch processing of work orders",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Process all work orders with all SOR types (uses config default folder)
-  python unified_sor_processor.py
-  
-  # Test mode: Process limited work orders (uses config default limit)
-  python unified_sor_processor.py --test-mode
-  
-  # Process specific number of work orders
-  python unified_sor_processor.py --max-work-orders 10
-  
-  # Process with custom folder
-  python unified_sor_processor.py --parent-folder path/to/work_orders
-  
-  # Process with specific SOR types only
-  python unified_sor_processor.py --sor-list AsbestosBagAndBoard,FuseReplacement
-  
-  # Process with Excel output and sequential processing
-  python unified_sor_processor.py --output-format excel --sequential
-  
-  # Process with custom output path
-  python unified_sor_processor.py --output-path results/batch_analysis
-  
-  # List available SOR types
-  python unified_sor_processor.py --list-sors
-        """
-    )
-    
-    # Optional arguments
-    parser.add_argument(
-        "--parent-folder",
-        help="Path to parent folder containing work order sub-folders (default: uses config default)"
-    )
-    
-    # Optional arguments
-    parser.add_argument(
-        "--sor-list",
-        help="Comma-separated list of specific SOR types to analyze (default: all enabled)"
-    )
-    
-    parser.add_argument(
-        "--output-format",
-        choices=["csv", "excel", "both"],
-        default="both",
-        help="Output format for table (default: both)"
-    )
-    
-    parser.add_argument(
-        "--output-path",
-        help="Base path for output files (default: uses config default with timestamp)"
-    )
-    
-    parser.add_argument(
-        "--sequential",
-        action="store_true",
-        help="Process work orders sequentially instead of parallel"
-    )
-    
-    parser.add_argument(
-        "--test-mode",
-        action="store_true",
-        help="Run in test mode with limited work orders (uses config default)"
-    )
-    
-    parser.add_argument(
-        "--max-work-orders",
-        type=int,
-        help="Maximum number of work orders to process (overrides test mode)"
-    )
-    
-    parser.add_argument(
-        "--list-sors",
-        action="store_true",
-        help="List all available SOR types and exit"
-    )
-    
-    parser.add_argument(
-        "--save-json",
-        action="store_true",
-        default=True,
-        help="Save detailed JSON results (default: True)"
-    )
-    
-    args = parser.parse_args()
-    
+    """Main function with CLI configuration and processing."""
     # Initialize configuration
     config_manager = ConfigManager()
     setup_logging(config_manager)
+    
+    # Set up CLI configuration
+    cli_config = CLIConfig(config_manager)
+    parser = cli_config.create_parser()
+    args = parser.parse_args()
+    
+    # Initialize processor
     processor = UnifiedSORProcessor(config_manager)
     
+    # Resolve configuration from CLI args and config defaults
+    config = cli_config.resolve_config(args)
+    
     # Handle list-sors mode
-    if args.list_sors:
+    if config["list_sors"]:
         enabled_sors = processor.get_enabled_sor_types()
         print("Available SOR types:")
         for sor_type in enabled_sors:
-            config = processor.sor_config.get("sor_analysis", {}).get("sor_types", {}).get(sor_type, {})
-            print(f"  {sor_type}: {config.get('description', 'No description')}")
+            sor_config = processor.sor_config.get("sor_analysis", {}).get("sor_types", {}).get(sor_type, {})
+            print(f"  {sor_type}: {sor_config.get('description', 'No description')}")
         return
     
-    # Determine parent folder
-    if args.parent_folder:
-        parent_folder = args.parent_folder
-    else:
-        # Use default from config
-        parent_folder = processor.sor_config.get("sor_analysis", {}).get("default_paths", {}).get("batch_parent_folder")
-        if not parent_folder:
-            print("Error: No parent folder specified and no default found in config")
-            print("Use --parent-folder argument or set batch_parent_folder in sor_analysis_config.yaml")
-            sys.exit(1)
-    
     try:
-        # Determine SOR types to analyze
-        sor_types = None
-        if args.sor_list:
-            sor_types = [s.strip() for s in args.sor_list.split(",")]
-            sor_types = processor.validate_sor_types(sor_types)
-            if not sor_types:
+        # Validate SOR types if specified
+        if config["sor_types"]:
+            config["sor_types"] = processor.validate_sor_types(config["sor_types"])
+            if not config["sor_types"]:
                 print("Error: No valid SOR types specified")
                 sys.exit(1)
         
-        # Determine output path
-        if args.output_path:
-            output_base_path = args.output_path
-        else:
-            # Use default from config with timestamp
-            default_output = processor.sor_config.get("sor_analysis", {}).get("default_paths", {}).get("batch_output_folder", "outputs/batch_results")
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_base_path = f"{default_output}_{timestamp}"
-        
-        # Determine work order limit
-        max_work_orders = None
-        if args.max_work_orders:
-            max_work_orders = args.max_work_orders
-            print(f"Limiting to {max_work_orders} work orders (user specified)")
-        elif args.test_mode:
-            max_work_orders = processor.sor_config.get("sor_analysis", {}).get("batch_processing", {}).get("test_max_work_orders", 5)
-            print(f"Test mode: Limiting to {max_work_orders} work orders")
-        else:
-            print("Processing all available work orders")
-        
-        # Process work orders
-        print(f"Starting unified SOR processing...")
-        print(f"Parent folder: {parent_folder}")
-        print(f"SOR types: {sor_types if sor_types else 'All enabled'}")
-        print(f"Processing mode: {'Sequential' if args.sequential else 'Parallel'}")
-        print(f"Output path: {output_base_path}")
-        print("-" * 60)
+        # Print processing information
+        cli_config.print_processing_info(config)
         
         start_time = time.time()
         
         batch_results = await processor.process_work_orders_batch(
-            parent_folder,
-            sor_types=sor_types,
-            sequential=args.sequential,
-            max_work_orders=max_work_orders
+            config["parent_folder"],
+            sor_types=config["sor_types"],
+            max_work_orders=config["max_work_orders"]
         )
         
         end_time = time.time()
         processing_time = end_time - start_time
         
         # Save results
-        saved_files = processor.save_results(batch_results, output_base_path)
+        saved_files = processor.save_results(batch_results, config["output_path"])
         
         # Print summary
         summary = batch_results["batch_summary"]
@@ -718,7 +641,7 @@ Examples:
             for sor_type, stats in summary['sor_statistics'].items():
                 print(f"  {sor_type}: {stats['pass']} PASS, {stats['fail']} FAIL, {stats['error']} ERROR")
         
-        print(f"\nResults saved to: {output_base_path}")
+        print(f"\nResults saved to: {config['output_path']}")
         for file_type, file_path in saved_files.items():
             print(f"  {file_type.upper()}: {file_path}")
         print("="*60)

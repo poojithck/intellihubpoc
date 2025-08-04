@@ -20,45 +20,52 @@ class ResultsTableGenerator:
     def _get_table_config(self) -> Dict[str, Any]:
         """Get table generation configuration from SOR analysis config."""
         sor_config = self.config_manager.get_config("sor_analysis_config")
-        return sor_config.get("sor_analysis", {}).get("table_generation", {
-            "boolean_fields": {
-                "AsbestosBagAndBoard": "Valid_Claim",
-                "CertificateOfCompliance": "compliance_status",
-                "FuseReplacement": "valid_claim",
-                "MeterConsolidationE4": "valid_consolidation",
-                "PlugInMeterRemoval": "valid_removal",
-                "ServiceProtectionDevices": "valid_installation",
-                "SwitchInstallation": "valid_installation",
-                "NeutralLinkInstallation": "valid_installation",
-                "meter_reading": "valid_reading"
-            },
-            "notes_fields": {
-                "AsbestosBagAndBoard": "Notes",
-                "CertificateOfCompliance": "notes",
-                "FuseReplacement": "notes",
-                "MeterConsolidationE4": "notes",
-                "PlugInMeterRemoval": "notes",
-                "ServiceProtectionDevices": "notes",
-                "SwitchInstallation": "notes",
-                "NeutralLinkInstallation": "notes",
-                "meter_reading": "notes"
-            },
-            "additional_fields": {
-                "AsbestosBagAndBoard": ["National_Meter_Identifier", "Date_On_Bag"],
-                "CertificateOfCompliance": ["certificate_number", "issue_date"],
-                "FuseReplacement": ["fuse_count", "is_even_count"],
-                "MeterConsolidationE4": ["meter_count", "consolidation_type"],
-                "PlugInMeterRemoval": ["meter_type", "removal_method"],
-                "ServiceProtectionDevices": ["device_type", "installation_status"],
-                "SwitchInstallation": ["switch_type", "installation_status"],
-                "NeutralLinkInstallation": ["link_type", "installation_status"],
-                "meter_reading": ["reading_value", "reading_date", "meter_type"]
-            },
-            "output_formats": ["csv", "excel"],
-            "include_metadata": True,
-            "include_costs": True,
-            "sort_by_work_order": True
-        })
+        table_config = sor_config.get("sor_analysis", {}).get("table_generation", {})
+        
+        # Ensure we have the configuration, fallback to defaults only if missing
+        if not table_config:
+            self.logger.warning("No table_generation config found, using defaults")
+            table_config = {
+                "boolean_fields": {
+                    "AsbestosBagAndBoard": "Valid_Claim",
+                    "CertificateOfCompliance": "Valid_Certificate",
+                    "FuseReplacement": "valid_claim",
+                    "MeterConsolidationE4": "consolidation",
+                    "PlugInMeterRemoval": "meters_removed",
+                    "ServiceProtectionDevices": "devices_added",
+                    "SwitchInstallation": "switch_installed",
+                    "NeutralLinkInstallation": "neutral_link_installed",
+                    "meter_reading": "most_likely"
+                },
+                "notes_fields": {
+                    "AsbestosBagAndBoard": "Notes",
+                    "CertificateOfCompliance": "Notes",
+                    "FuseReplacement": "notes",
+                    "MeterConsolidationE4": "notes",
+                    "PlugInMeterRemoval": "notes",
+                    "ServiceProtectionDevices": "notes",
+                    "SwitchInstallation": "notes",
+                    "NeutralLinkInstallation": "notes",
+                    "meter_reading": "notes"
+                },
+                "additional_fields": {
+                    "AsbestosBagAndBoard": ["National_Meter_Identifier", "Date_On_Bag", "Asbestos_bag_image", "Meter_board_image"],
+                    "CertificateOfCompliance": ["Certificate_type", "Electrical_Work_Present", "Certificate_image"],
+                    "FuseReplacement": ["fuse_count", "is_even_count", "fuse_image"],
+                    "MeterConsolidationE4": ["init_count", "final_count", "init_image", "final_image"],
+                    "PlugInMeterRemoval": ["init_count", "final_count", "init_image", "final_image"],
+                    "ServiceProtectionDevices": ["init_count", "final_count", "init_image", "final_image"],
+                    "SwitchInstallation": ["switch_count", "init_image", "final_image"],
+                    "NeutralLinkInstallation": ["init_count", "final_count", "init_image", "final_image"],
+                    "meter_reading": ["possible_values", "meter_type", "confidence"]
+                },
+                "output_formats": ["csv", "excel"],
+                "include_metadata": True,
+                "include_costs": True,
+                "sort_by_work_order": True
+            }
+        
+        return table_config
     
     def generate_table_from_batch_results(self, batch_results: Dict[str, Any]) -> pd.DataFrame:
         """
@@ -129,6 +136,11 @@ class ResultsTableGenerator:
                         row_data[f"{sor_type}_{field}"] = str(sor_result[field])
                     else:
                         row_data[f"{sor_type}_{field}"] = ""
+                        self.logger.debug(f"Missing field '{field}' for {sor_type} in work order {work_order_number}")
+                
+                # Log all available fields for debugging
+                if sor_result:
+                    self.logger.debug(f"Available fields for {sor_type} in {work_order_number}: {list(sor_result.keys())}")
             
             # Add metadata if configured
             if self.table_config["include_metadata"]:
@@ -147,7 +159,14 @@ class ResultsTableGenerator:
         if self.table_config["sort_by_work_order"] and not df.empty:
             df = df.sort_values("Work_Order")
         
-        self.logger.info(f"Generated table with {len(df)} work orders and {len(df.columns)} columns")
+        # Log summary of extracted fields
+        if not df.empty:
+            sor_columns = [col for col in df.columns if any(sor_type in col for sor_type in sor_types)]
+            self.logger.info(f"Generated table with {len(df)} work orders and {len(df.columns)} columns")
+            self.logger.info(f"SOR-related columns: {sor_columns}")
+        else:
+            self.logger.warning("Generated empty table")
+        
         return df
     
     def save_table(self, df: pd.DataFrame, output_path: str, format: str = "csv") -> str:

@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any, List, Tuple
 import logging
 import base64
 import binascii
+from botocore.config import Config
 
 class BedrockClient:
     
@@ -29,11 +30,22 @@ class BedrockClient:
         }
         
         try:
+            # Configure client for high concurrency and appropriate timeouts
+            config = Config(
+                max_pool_connections=100,  # Support up to 100 concurrent connections
+                read_timeout=300,  # 5 minutes timeout for API calls  
+                connect_timeout=60,  # 1 minute connection timeout
+                retries={
+                    'max_attempts': 3,
+                    'mode': 'adaptive'
+                }
+            )
+            
             if region_name:
-                self.client = boto3.client('bedrock-runtime', region_name=region_name)
+                self.client = boto3.client('bedrock-runtime', region_name=region_name, config=config)
             else:
-                self.client = boto3.client('bedrock-runtime')
-            logging.info(f"Bedrock client initialized successfully for model: {model_id}")
+                self.client = boto3.client('bedrock-runtime', config=config)
+            logging.info(f"Bedrock client initialized successfully for model: {model_id} with high-concurrency config")
         except Exception as e:
             logging.error(f"Failed to initialize Bedrock client: {str(e)}")
             raise
@@ -468,5 +480,35 @@ class BedrockClient:
         # Merge with parsed response
         base_result.update(parsed_response)
         return base_result
+    
+    @staticmethod
+    def create_fallback_parser(sor_type: str):
+        """Create a simple fallback parser for a specific SOR type."""
+        def fallback_parser(text: str) -> Dict[str, Any]:
+            """Simple fallback parser that extracts basic fields from text."""
+            result = {}
+            
+            # Try to extract common boolean fields
+            boolean_fields = {
+                "valid_claim": ["valid", "claim", "true", "pass", "yes"],
+                "valid_installation": ["valid", "installation", "installed", "true", "pass", "yes"],
+                "valid_consolidation": ["valid", "consolidation", "consolidated", "true", "pass", "yes"],
+                "valid_removal": ["valid", "removal", "removed", "true", "pass", "yes"],
+                "devices_added": ["device", "added", "installed", "true", "pass", "yes"],
+                "meters_removed": ["meter", "removed", "true", "pass", "yes"],
+                "switch_installed": ["switch", "installed", "true", "pass", "yes"],
+                "neutral_link_installed": ["neutral", "link", "installed", "true", "pass", "yes"]
+            }
+            
+            text_lower = text.lower()
+            for field, keywords in boolean_fields.items():
+                result[field] = any(keyword in text_lower for keyword in keywords)
+            
+            # Extract notes if possible
+            result["notes"] = f"Fallback parsing used for {sor_type}"
+            
+            return result
+        
+        return fallback_parser
     
     
