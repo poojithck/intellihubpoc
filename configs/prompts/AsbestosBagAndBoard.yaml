@@ -42,7 +42,7 @@ AsbestosBagAndBoard:
 
   fallback_keywords:
     positive: ["asbestos bag", "asbestos sticker", "identifier", "date", "valid claim"]
-    negative: ["no bag", "no sticker", "missing identifier", "invalid claim"]
+    negative: ["no bag", "no sticker", "missing identifier", "invalid claim", "unknown"]
 
   response_format:
     required_fields: ["Asbestos_bag_image", "Meter_board_image", "National_Meter_Identifier", "Date_On_Bag", "Valid_Claim", "Notes"]

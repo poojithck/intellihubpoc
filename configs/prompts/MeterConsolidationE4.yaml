@@ -28,6 +28,7 @@ MeterConsolidationE4:
       2. Using timestamps (or filename order if equal), pick the EARLIEST and the LATEST of those full-board images.
       3. In each of these two images, count how many separate meters you can see, following the "Meter cues" above and the "NOT meters" list.
       4. Decide if consolidation occurred: consolidation = true when init_count > final_count.
+         false when init_count ≤ final_count (no consolidation or uncertain – "unknown" not allowed).
       
     IMPORTANT: You should find AT LEAST TWO suitable images for comparison. The init_image and final_image filenames MUST be different unless you truly cannot find two suitable overview images.
     
@@ -38,14 +39,14 @@ MeterConsolidationE4:
       "init_image": "<earliest_full_board_filename>",
       "final_image": "<latest_full_board_filename>",
       "consolidation": <true|false>,
-      "notes": "<brief (≤30 words) justification mentioning key visual evidence>"
+      "notes": "<brief (≤25 words) justification mentioning key visual evidence>"
     }
 
     Do not include any other text, repeated keys, or partial outputs. Only output a single valid JSON object as shown above.
 
   fallback_keywords:
     positive: ["consolidation", "fewer meters", "removed", "reduction"]
-    negative: ["no change", "same number", "unchanged", "no consolidation"]
+    negative: ["no change", "same number", "unchanged", "no consolidation", "unknown"]
 
   response_format:
     required_fields: ["init_count", "final_count", "init_image", "final_image", "consolidation", "notes"]

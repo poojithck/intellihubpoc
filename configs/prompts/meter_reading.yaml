@@ -21,7 +21,7 @@ meter_reading:
       "possible_values": ["XXXXX", "XXXXX", "XXXXX"],
       "meter_type": "gas/water/electric",
       "confidence": "high/medium/low",
-      "notes": "Brief explanation of what you observed, including how you handled any ambiguous digits."
+      "notes": "Brief (≤25 words) explanation of what you observed, including how you handled any ambiguous digits."
     }
 
 

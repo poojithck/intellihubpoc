@@ -3,6 +3,8 @@ from typing import List, Tuple, Optional
 from PIL import Image, ImageDraw, ImageFont
 import math
 import logging
+import base64
+import io
 
 from .image_loader import ImageLoader
 from ..config import ConfigManager
@@ -140,9 +142,70 @@ class ImageGridder:
         self.logger.info(f"Created {len(grids)} grid images from {total_images} input images.")
         return grids
 
+    def _compress_image_to_size_limit(self, image: Image.Image, max_size_mb: float = 4.8, format: str = "PNG") -> Image.Image:
+        """
+        Compress an image to stay under the specified size limit.
+        
+        Args:
+            image: PIL Image to compress
+            max_size_mb: Maximum size in MB (default: 4.8MB)
+            format: Image format for encoding
+            
+        Returns:
+            Compressed PIL Image that fits within the size limit
+        """
+        max_size_bytes = max_size_mb * 1024 * 1024
+        
+        # First, try to encode at current size
+        current_image = image.copy()
+        
+        # Start with high quality and progressively reduce
+        quality_levels = [95, 85, 75, 65, 55, 45, 35, 25] if format.upper() == "JPEG" else [None]
+        resize_factors = [1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3]
+        
+        for resize_factor in resize_factors:
+            # Resize image if needed
+            if resize_factor < 1.0:
+                new_width = int(image.width * resize_factor)
+                new_height = int(image.height * resize_factor)
+                current_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                self.logger.info(f"Resizing image to {new_width}x{new_height} (factor: {resize_factor})")
+            
+            # Try different quality levels for this size
+            for quality in quality_levels:
+                try:
+                    # Convert to RGB if saving as JPEG
+                    temp_image = current_image
+                    if format.upper() in ('JPEG', 'JPG') and temp_image.mode in ('RGBA', 'LA', 'P'):
+                        temp_image = temp_image.convert('RGB')
+                    
+                    # Encode to bytes
+                    buffer = io.BytesIO()
+                    if quality is not None:
+                        temp_image.save(buffer, format=format, quality=quality, optimize=True)
+                    else:
+                        temp_image.save(buffer, format=format, optimize=True)
+                    
+                    # Check size
+                    size_bytes = len(buffer.getvalue())
+                    size_mb = size_bytes / (1024 * 1024)
+                    
+                    if size_bytes <= max_size_bytes:
+                        self.logger.info(f"Compressed image to {size_mb:.2f}MB (quality: {quality}, resize: {resize_factor})")
+                        return temp_image
+                    
+                except Exception as e:
+                    self.logger.warning(f"Failed to compress with quality {quality}, resize {resize_factor}: {e}")
+                    continue
+        
+        # If we get here, even maximum compression wasn't enough
+        # Return the most compressed version we could achieve
+        self.logger.warning(f"Could not compress image below {max_size_mb}MB limit. Using maximum compression.")
+        return current_image
+
     def encode_grids(self, grids: List[Tuple[str, Image.Image]], format: str = "PNG") -> List[dict]:
         """
-        Encode grid images to base64 for LLM input.
+        Encode grid images to base64 for LLM input with size limit enforcement.
         Args:
             grids: List of (name, PIL.Image) tuples
             format: Image format for encoding (default: PNG)
@@ -151,12 +214,32 @@ class ImageGridder:
         """
         from .image_loader import ImageLoader
         encoded_grids = []
+        max_size_mb = 4.8
+        
         for grid_name, grid_img in grids:
-            encoded_data = ImageLoader.encode_single_image(grid_img, format=format)
+            # First check if the image would exceed size limit
+            temp_encoded = ImageLoader.encode_single_image(grid_img, format=format)
+            temp_size_mb = len(base64.b64decode(temp_encoded)) / (1024 * 1024)
+            
+            if temp_size_mb > max_size_mb:
+                self.logger.warning(f"Grid image {grid_name} is {temp_size_mb:.2f}MB, exceeds {max_size_mb}MB limit. Compressing...")
+                # Compress the image to fit within size limit
+                compressed_img = self._compress_image_to_size_limit(grid_img, max_size_mb, format)
+                encoded_data = ImageLoader.encode_single_image(compressed_img, format=format)
+                
+                # Verify the compressed size
+                final_size_mb = len(base64.b64decode(encoded_data)) / (1024 * 1024)
+                self.logger.info(f"Grid image {grid_name} compressed from {temp_size_mb:.2f}MB to {final_size_mb:.2f}MB")
+            else:
+                # Image is within size limit, use original
+                encoded_data = temp_encoded
+                self.logger.info(f"Grid image {grid_name} is {temp_size_mb:.2f}MB, within {max_size_mb}MB limit")
+            
             encoded_grids.append({
                 "name": grid_name,
                 "data": encoded_data,
                 "timestamp": None
             })
-        self.logger.info(f"Encoded {len(encoded_grids)} grid images for LLM input")
+        
+        self.logger.info(f"Encoded {len(encoded_grids)} grid images for LLM input (all within {max_size_mb}MB limit)")
         return encoded_grids 

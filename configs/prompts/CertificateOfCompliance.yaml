@@ -36,7 +36,7 @@ CertificateOfCompliance:
 
   fallback_keywords:
     positive: ["certificate of compliance", "electrical", "work", "safety", "electrician", "licence", "site", "address", "job", "install", "signature", "date", "valid certificate"]
-    negative: ["no certificate", "missing", "not found", "invalid", "no electrical work"]
+    negative: ["no certificate", "missing", "not found", "invalid", "no electrical work", "unknown"]
 
   response_format:
     required_fields: ["Certificate_image", "Certificate_type", "Electrical_Work_Present", "Valid_Certificate", "Notes"]

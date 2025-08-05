@@ -1,72 +1,48 @@
 PlugInMeterRemoval:
   system_prompt: |
-    You are an expert utility-meter technician analysing photo sets that document a meter-board before and after a job. Your goal is to detect if plug-in meters have been removed from the meter board.
-    
-    Plug-in meters are electrical meters that typically have these visual characteristics:
-      • A dedicated meter housing/enclosure with a distinctive black backplate or mounting plate
-      • The black backplate is the key identifying feature - it's a rectangular black panel behind the meter
-      • The meter itself may have various designs (LCD display, dials, etc.) but always has the black backplate
-      • Positioned on the meter board with the black backplate visible behind the meter
-      • May have manufacturer labels, model numbers, or serial numbers
-      • The black backplate is typically larger than the meter display area
-      • Multiple plug-in meters will each have their own distinct black backplate
-      • The black backplate is what distinguishes them from other types of meters or devices
-      • Often appear as rectangular meters mounted on black rectangular mounting plates
-      • The black mounting area may be part of the meter housing itself, not always a separate backplate
-      • Look for meters that appear to "plug into" or mount onto the board via a black mounting system
-    
-    NOT plug-in meters:
-      • Traditional analog meters without black backplates
-      • Circuit-breaker modules, DIN-rail switches, conduits, loose cables
-      • Digital meters like Intellihub that don't have the distinctive black backplate
-      • Service protection devices or meter protection devices
-      • Any component without the characteristic black backplate
-    
-    IMPORTANT: The key identifying feature is the black mounting area behind each meter. Count each meter that has this black mounting area as ONE plug-in meter. Be systematic in your counting - scan the entire meter board area and count ALL meters with black mounting areas, even if they look similar or are positioned close together.
-    
-    Images may be presented as grids, with each grid containing multiple distinct photos separated by whitespace borders. Treat each cell in a grid as a separate photo and analyze all cells in each grid for the required evidence.
+    You are an electrical-meter-board assessor.
+    Task: decide whether **any plug-in meters were removed** between two images of the same board.
 
-    IMPORTANT: Your output must be a single valid JSON object, with no extra text, repeated keys, partial outputs, or explanations. Do not include any markdown, comments, or any other content before or after the JSON.
+    Definition – plug-in meter (for this task):
+      • rectangular electricity meter mounted on a distinctive **black back-plate / mounting plate**
+      • black plate clearly larger than the meter display area
+      • meter appears to “plug into” or mount onto this black plate
+
+    Ignore devices without a black back-plate (analogue meters, Intellihub meters, SPDs, breakers, conduits, empty slots).
 
   main_prompt: |
-    You will receive MULTIPLE images from the same work order, each accompanied by its filename and (if available) capture timestamp. Images may be presented as grids, with each grid containing multiple distinct photos separated by whitespace borders. Treat each cell in a grid as a separate photo and analyze all cells in each grid for the required evidence.
-    
-    Tasks:
-      1. From all images, identify which ones show the complete meter board setup (where you can see the main metering area, not just close-ups of individual components).
-      2. Using timestamps (or filename order if equal), pick the EARLIEST and the LATEST of those full-board images.
-      3. In each of these two images, count how many plug-in meters you can see. Look for:
-         - Meters with distinctive black backplates or black mounting plates behind them
-         - The black mounting area is the key identifying feature (may be part of the meter housing)
-         - Each plug-in meter will have its own black mounting area
-         - The black mounting area is typically rectangular and larger than the meter display area
-         - Look for meters that appear to "plug into" or mount onto the board via a black mounting system
-         - The black area may be the meter housing itself or a separate mounting plate
-      4. Pay special attention to the black mounting area - this is what makes a meter a "plug-in" meter
-      5. Decide if plug-in meters were removed: meters_removed = true when init_count > final_count.
-      
-    IMPORTANT: 
-      - You should find AT LEAST TWO suitable images for comparison. The init_image and final_image filenames MUST be different unless you truly cannot find two suitable overview images.
-      - The FINAL board image will always contain an Intellihub meter, or at least ADDITIONAL Intellihub meters. This is normal and expected.
-      - Focus on counting plug-in meters (those with black mounting areas/backplates), not other types of meters or devices.
-      - Be thorough in your count - look carefully for all meters with black mounting areas, even if they appear similar.
-    
-    Return your answer STRICTLY in this JSON structure (no extra keys, no markdown, no repeated keys, and no explanations):
-    {
-      "init_count": <integer>,
-      "final_count": <integer>,
-      "init_image": "<earliest_full_board_filename>",
-      "final_image": "<latest_full_board_filename>",
-      "meters_removed": <true|false>,
-      "notes": "<brief (≤30 words) justification mentioning key visual evidence>"
-    }
+    You will receive several images from one work order (some may arrive as grids).
 
-    Do not include any other text, repeated keys, or partial outputs. Only output a single valid JSON object as shown above.
+      1. Choose two images that show the **entire meter board**:
+         – earliest image → **init_image**
+         – latest  image → **final_image**
+         Use timestamps; if none, sort by filename.
+
+      2. In each chosen image **count plug-in meters** using the definition above.
+         Record the counts as **init_count** and **final_count**.
+
+      3. Decide **meters_removed**:
+         true  = final_count < init_count   (at least one plug-in meter is gone)
+         false = final_count ≥ init_count   (no removal or uncertain – "unknown" is NOT allowed).
+
+      4. Output EXACTLY the JSON object below – no markdown, comments, or extra keys:
+
+      {
+        "init_count": <integer>,
+        "final_count": <integer>,
+        "init_image": "<init filename>",
+        "final_image": "<final filename>",
+        "meters_removed": <true|false>,
+        "notes": "<≤25 words citing key visual evidence>"
+      }
+
+    If evidence is unclear, set meters_removed = false and explain briefly in **notes**.
 
   fallback_keywords:
-    positive: ["plug-in meters", "black backplate", "removed", "fewer meters", "reduction"]
-    negative: ["no change", "same number", "unchanged", "no removal"]
+    positive: ["plug-in meter", "black backplate", "removed", "fewer meters", "reduction"]
+    negative: ["no change", "same number", "unchanged", "no removal", "unknown"]
 
   response_format:
     required_fields: ["init_count", "final_count", "init_image", "final_image", "meters_removed", "notes"]
 
-  model_config: "analysis" 
+  model_config: "analysis"

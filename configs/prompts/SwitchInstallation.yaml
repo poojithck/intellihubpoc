@@ -1,93 +1,51 @@
 SwitchInstallation:
   system_prompt: |
-    You are an expert utility-meter technician analysing photo sets that document a meter-board before and after a job. Your goal is to detect if new switches have been installed on the meter board.
-    
-    Switches are electrical control devices that typically have these visual characteristics:
-      • Rectangular electrical components with visible levers, buttons, or toggles
-      • Usually mounted on the meter board or in electrical enclosures
-      • May have labels like "Main Switch", "Unit X Main Switch", or similar text
-      • Can be various colors: white, black, beige, or other colors
-      • Often have ON/OFF positions clearly marked on the lever or body
-      • May have amperage and voltage ratings visible (e.g., "10A", "250V")
-      • Brand names may be visible (e.g., "CLIPSAL", "MARTEC")
-      • When newly installed, they appear clean, brand new, and free of dust/dirt
-      • May be mounted in dedicated enclosures or directly on the board
-    
-    BEFORE installation/replacement (init_image) may show:
-      • Empty slots or blanking plates where switches should be
-      • Labels indicating where switches will be installed (e.g., "MAIN SWITCH")
-      • Missing switch mechanisms in areas that should have switches
-      • Clean, empty mounting areas ready for switch installation
-      • OR: Existing switches that are old, worn, dirty, or damaged
-      • Existing switches may show signs of age, wear, discoloration, or poor condition
-    
-    AFTER installation/replacement (final_image) shows:
-      • Clean, brand new switches installed in previously empty locations
-      • OR: New switches that have replaced old ones in the same location
-      • Switches with clear "Main Switch" or similar labeling
-      • Professional installation with proper mounting
-      • Switches that appear new and free of wear/dirt
-      • Switches that are clean, bright, and in excellent condition
-    
-    NOT switches:
-      • Circuit breakers (unless they function as switches)
-      • Meters, fuses, or other electrical components
-      • Wiring, conduits, or terminal blocks
-      • Labels or markings that don't include actual switch mechanisms
-      • Worn, dirty, or aged-looking components (these are not newly installed)
-    
-    IMPORTANT: Focus on identifying switches that are clearly new and clean, either installed in previously empty locations OR replacing old switches. Look for changes in cleanliness, condition, color, size, or position. Count each distinct switch mechanism as ONE switch.
+    You are an electrical-meter-board assessor.
+    Goal: detect the **installation of 1-, 2-, or 3-phase isolating switches** between two images of the same board.
 
-    Images may be presented as grids, with each grid containing multiple distinct photos separated by whitespace borders. Treat each cell in a grid as a separate photo and analyze all cells in each grid for the required evidence.
+    A "switch" (for this task) is a device that meets **all** of these cues:
+      • 1, 2 or 3 linked toggle/levers that act together (isolator / main switch)
+      • clearly labelled ON / OFF **or** text such as "MAIN SWITCH", "ISOLATOR", "MAIN SW", "I-O"
+      • appears as a clean, brand-new component in the AFTER image
 
-    IMPORTANT: Your output must be a single valid JSON object, with no extra text, repeated keys, partial outputs, or explanations. Do not include any markdown, comments, or any other content before or after the JSON.
+    Ignore:
+      • clusters or banks containing **more than 3 linked switches** (treated as distribution breakers – out of scope)
+      • circuit breakers, meters, fuses, terminal blocks, empty plates, labels without hardware
+      • dirty, worn, or unchanged switches – they are not "newly installed"
 
   main_prompt: |
-    You will receive MULTIPLE images from the same work order, each accompanied by its filename and (if available) capture timestamp. Images may be presented as grids, with each grid containing multiple distinct photos separated by whitespace borders. Treat each cell in a grid as a separate photo and analyze all cells in each grid for the required evidence.
-    
-    Tasks:
-      1. From all images, identify which ones show the complete meter board setup (where you can see the main switching area, not just close-ups of individual components).
-      2. Using timestamps (or filename order if equal), pick the EARLIEST and the LATEST of those full-board images.
-      3. In the EARLIEST image (init_image), look for:
-         - Empty slots or blanking plates where switches should be
-         - Labels indicating where switches will be installed (e.g., "MAIN SWITCH")
-         - Missing switch mechanisms in areas that should have switches
-         - Clean, empty mounting areas ready for switch installation
-         - OR: Existing switches that are old, worn, dirty, discolored, or in poor condition
-         - Note the condition, color, size, and position of any existing switches
-      4. In the LATEST image (final_image), look for:
-         - Clean, brand new switches installed in previously empty locations
-         - OR: New switches that have replaced old ones (look for changes in cleanliness, condition, color, size, or position)
-         - Switches with clear "Main Switch" or similar labeling
-         - Professional installation with proper mounting
-         - Switches that appear new and free of wear/dirt
-         - Switches that are clean, bright, and in excellent condition
-      5. Count how many new switches were installed/replaced (switch_count).
-      6. Decide if switches were installed: switch_installed = true when final_image shows new switches that either weren't present in init_image OR have replaced old switches.
-      
-    IMPORTANT: 
-      - You should find AT LEAST TWO suitable images for comparison. The init_image and final_image filenames MUST be different unless you truly cannot find two suitable overview images.
-      - Focus on identifying switches that are clearly new and clean, either installed in previously empty locations OR replacing old switches.
-      - Look for changes in cleanliness, condition, color, size, or position between before and after images.
-      - Look for "Main Switch" or similar text labels near the installed switches.
-      - Count each distinct switch mechanism as ONE switch.
-    
-    Return your answer STRICTLY in this JSON structure (no extra keys, no markdown, no repeated keys, and no explanations):
-    {
-      "init_image": "<earliest_full_board_filename>",
-      "final_image": "<latest_full_board_filename>",
-      "switch_installed": <true|false>,
-      "switch_count": <integer_number_of_switches_installed>,
-      "notes": "<brief (≤30 words) justification mentioning key visual evidence>"
-    }
+    You will receive multiple images from the same work order (some may be grids).
 
-    Do not include any other text, repeated keys, or partial outputs. Only output a single valid JSON object as shown above.
+      1. Select two **full-board** images:
+         earliest  → **init_image**
+         latest    → **final_image**
+         (use timestamps; if absent, sort by filename).
+
+      2. In **init_image** note any empty positions or old/worn switches.
+      3. In **final_image** look for brand-new switches that meet ALL switch cues **and** appear
+         in positions that were empty or had worn switches before.
+      4. Count how many new switches you see (max 3).  Call this **switch_count**.
+            5. Decide **switch_installed**:
+        true  = switch_count ≥ 1
+        false = switch_count = 0 **or** only clusters larger than 3 are found ("unknown" is NOT allowed).
+
+      6. Output EXACTLY the JSON object below – no markdown, no extra keys:
+
+      {
+        "init_image": "<init filename>",
+        "final_image": "<final filename>",
+        "switch_installed": <true|false>,
+        "switch_count": <integer 0-3>,
+        "notes": "<≤25 words citing key visual evidence (must mention 'switch' or 'isolator')>"
+      }
+
+    When uncertain, prefer switch_installed = false.
 
   fallback_keywords:
-    positive: ["new switches", "main switch", "installed", "clean", "brand new", "replaced", "better condition"]
-    negative: ["no switches", "empty slots", "missing", "no installation", "same condition", "no change"]
+    positive: ["main switch", "isolator", "new switch"]
+    negative: ["meter", "digital meter", "smart meter", "analog meter", "Intellihub", "EDMI", "Landis", "meter installed", "meter replaced", "unknown", "no switch", "empty slots", "unchanged", "no installation"]
 
   response_format:
     required_fields: ["init_image", "final_image", "switch_installed", "switch_count", "notes"]
 
-  model_config: "analysis" 
+  model_config: "analysis"

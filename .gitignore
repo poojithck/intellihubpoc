@@ -12,3 +12,4 @@ wheels/
 # Files
 artefacts
 outputs
+tests/sor_evaluation

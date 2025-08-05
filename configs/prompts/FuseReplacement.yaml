@@ -72,14 +72,14 @@ FuseReplacement:
       "fuse_count": <integer_total_number_of_fuses>,
       "is_even_count": <true|false>,
       "valid_claim": <true|false>,
-      "notes": "<brief (≤30 words) justification mentioning key visual evidence>"
+      "notes": "<brief (≤25 words) justification mentioning key visual evidence>"
     }
 
     Do not include any other text, repeated keys, or partial outputs. Only output a single valid JSON object as shown above.
 
   fallback_keywords:
     positive: ["fuses", "even count", "replacement", "valid claim", "clear image"]
-    negative: ["no fuses", "odd count", "invalid claim", "unclear", "missing"]
+    negative: ["no fuses", "odd count", "invalid claim", "unclear", "missing", "unknown"]
 
   response_format:
     required_fields: ["fuse_image", "fuse_count", "is_even_count", "valid_claim", "notes"]
