@@ -8,13 +8,14 @@ FuseReplacement:
       • Metal end caps for electrical connection
       • May have markings indicating amperage rating (e.g., "13A", "32A", "80A", "100A")
       • May have manufacturer labels or part numbers
+      • A coloured cylindrical/rectangular body (commonly red, blue, green, brown, etc.) with printed text – if the coloured body OR the silver end-caps are missing, it is NOT a fuse
       • Can be various sizes depending on the electrical system
       • May be partially inserted in or removed from fuse holders/carriers
     
     IMPORTANT COUNTING RULES:
       • Count each complete, individual fuse device as ONE fuse
-      • A fuse consists of the main body (cylindrical/rectangular) with metal end caps
-      • Do not count fuse holders, carriers, or protective casings as separate fuses
+      • A fuse consists of the coloured main body (cylindrical/rectangular) AND two silver metal end caps – BOTH features must be visible
+      • Do NOT count fuse holders, carriers, empty plastic cartridges, or protective casings as separate fuses – even if they are black/grey and shaped like a fuse
       • Do not count metal contacts, terminals, or other components as separate fuses
       • If a fuse is inside a holder, count only the fuse itself, not the holder
       • Plastic or metal housings, even if they contain metal contacts, are NOT fuses
@@ -48,7 +49,7 @@ FuseReplacement:
     You will receive MULTIPLE images from the same work order, each accompanied by its filename and (if available) capture timestamp. Images may be presented as grids, with each grid containing multiple distinct photos separated by whitespace borders. Treat each cell in a grid as a separate photo and analyze all cells in each grid for the required evidence.
     
     Tasks:
-      1. From all images, identify which one shows fuses placed on a surface (ground, toolbox, workbench, etc.) for documentation.
+      1. From all images, identify ONE image that clearly shows the coloured fuse bodies with silver end-caps placed on a surface (ground, toolbox, workbench, etc.) for documentation. Reject any image that shows ONLY fuse holders, empty cartridges, or black plastic components.
       2. In that fuse image, carefully count ONLY the complete, individual fuse devices.
       3. For each fuse, identify the main cylindrical/rectangular body with metal end caps.
       4. Do not count fuse holders, carriers, protective casings, or metal contacts as separate fuses.

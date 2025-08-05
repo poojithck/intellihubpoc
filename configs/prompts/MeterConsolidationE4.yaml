@@ -26,7 +26,8 @@ MeterConsolidationE4:
     Tasks:
       1. From all images, identify which ones show the complete meter board setup (where you can see the main metering area, not just close-ups of individual components).
       2. Using timestamps (or filename order if equal), pick the EARLIEST and the LATEST of those full-board images.
-      3. In each of these two images, count how many separate meters you can see, following the "Meter cues" above and the "NOT meters" list.
+      3. In each of these two images, count how many separate meters you can see, following the "Meter cues" above and the "NOT meters" list. 
+         Before including any object in the count, verify it shows a visible energy register (LCD/dials) OR a serial/manufacturer label; if not, treat it as NOT a meter. If still uncertain, cross-check with any close-up meter photos to confirm.
       4. Decide if consolidation occurred: consolidation = true when init_count > final_count.
          false when init_count ≤ final_count (no consolidation or uncertain – "unknown" not allowed).
       

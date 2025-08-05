@@ -120,7 +120,9 @@ class ResultsTableGenerator:
                     status = sor_result[boolean_field]
                     row_data[f"{sor_type}_Status"] = "PASS" if status else "FAIL"
                 else:
-                    row_data[f"{sor_type}_Status"] = "UNKNOWN"
+                    # If boolean field is missing, treat as FAIL since "unknown" is not allowed in our prompts
+                    row_data[f"{sor_type}_Status"] = "FAIL"
+                    self.logger.warning(f"Missing boolean field '{boolean_field}' for {sor_type} in work order {work_order_number}, treating as FAIL")
                 
                 # Extract notes
                 notes_field = self.table_config["notes_fields"].get(sor_type)

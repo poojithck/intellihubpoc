@@ -3,18 +3,23 @@ ServiceProtectionDevices:
     You are an electrical-meter-board assessor.
     Goal: decide whether **Service Protection Devices (SPD) / Meter Protection Devices (MPD)** were ADDED between two images.
 
+    CRITICAL: SPD/MPD are SMALL PROTECTION DEVICES, NOT METERS!
+    
     Count a device as SPD / MPD only when **all** cues below are visible:
-      • Small rectangular box mounted near a digital meter (Intellihub or similar)
-      • Case colour is **solid black** OR **translucent smoky-grey** (shows fuse inside)
-      • No levers, toggles, or switches; smooth enclosure
+      • Small rectangular black or translucent grey box (typically 30-50mm wide)
+      • Mounted separately from meters (often on DIN rail or meter board)
+      • Case colour is **solid black** OR **translucent smoky-grey** (may show internal fuse/components)
+      • Smooth enclosure with no external switches, levers, or controls
       • Appears brand-new (clean, unscratched) in the AFTER image
+      • MUCH SMALLER than electricity meters
 
-    Exclude / ignore:
-      • Any device with **white or coloured** casing
-      • Circuit breakers, DIN switches, fuses, terminal blocks, conduits, loose cables
-      • Intellihub meters themselves, enclosures, large panels
-      • Smart or analog/digital meters (with or without antenna), communication modules, or meter replacements
-      • Components that look dirty, worn, or unchanged
+    Exclude / ignore (THESE ARE NOT SPD/MPD):
+      • **ELECTRICITY METERS** of any type (analog, digital, smart, Intellihub) - these are LARGE measuring devices
+      • Meter installations, meter replacements, meter upgrades
+      • White or coloured devices
+      • Circuit breakers, switches, fuses, terminal blocks, conduits
+      • Large panels, enclosures, meter boxes
+      • Communication modules, antennas attached to meters
 
   main_prompt: |
     You will receive several images from a single work order (some may be grids).
@@ -26,6 +31,9 @@ ServiceProtectionDevices:
 
       2. In each image **count SPD / MPD** units that match ALL cues in the system prompt.
          Record counts as **init_count** and **final_count**.
+         
+         CRITICAL: DO NOT count electricity meters as SPD/MPD devices!
+         SPDs/MPDs are SMALL protection boxes, meters are LARGE measuring devices.
 
       3. Decide **devices_added**:
          true  = final_count > init_count  (at least one new SPD / MPD appears)
@@ -39,14 +47,14 @@ ServiceProtectionDevices:
         "init_image": "<init filename>",
         "final_image": "<final filename>",
         "devices_added": <true|false>,
-        "notes": "<≤25 words citing key visual evidence (must mention 'SPD' or 'MPD')>"
+        "notes": "<≤25 words citing key visual evidence about SMALL PROTECTION DEVICES, not meters>"
       }
 
     When uncertain, set devices_added = false and explain briefly in **notes**.
 
   fallback_keywords:
-    positive: ["SPD", "MPD", "black box", "translucent box", "protection device"]
-    negative: ["white", "no device", "unchanged", "same number", "no addition", "unknown", "smart meter", "digital meter", "meter installed", "meter replaced", "antenna"]
+    positive: ["SPD", "MPD", "black box", "translucent box", "protection device", "surge protection", "small box"]
+    negative: ["white", "no device", "unchanged", "same number", "no addition", "unknown", "meter", "smart meter", "digital meter", "analog meter", "Intellihub", "meter installed", "meter replaced", "antenna", "meter upgrade", "communication module"]
 
   response_format:
     required_fields: ["init_count", "final_count", "init_image", "final_image", "devices_added", "notes"]

@@ -139,6 +139,22 @@ class BedrockClient:
             if not self._is_base64(image_data):
                 image_data = base64.b64encode(image_data.encode()).decode()
             
+            # NUCLEAR OPTION: Check ALL image data for size before sending to AWS
+            try:
+                encoded_size = len(image_data.encode('utf-8'))
+                encoded_mb = encoded_size / (1024 * 1024)
+                if encoded_size > 5 * 1024 * 1024:  # AWS 5MB limit on ENCODED data
+                    self.logger.error(f"💥 NUCLEAR FIREWALL TRIGGERED! 💥")
+                    self.logger.error(f"OVERSIZED IMAGE DETECTED: {encoded_mb:.2f}MB ({encoded_size} bytes)")
+                    self.logger.error(f"Image name: {name}")
+                    self.logger.error(f"THIS MEANS OUR SIZE PROTECTION FAILED!")
+                    raise ValueError(f"BLOCKED OVERSIZED IMAGE: {encoded_mb:.2f}MB ({encoded_size} bytes) from {name} - SIZE PROTECTION BYPASSED!")
+            except ValueError:
+                raise  # Re-raise ValueError (our custom error)
+            except Exception as size_check_error:
+                self.logger.error(f"Failed to validate image size for {name}: {size_check_error}")
+                raise
+            
             # Add image
             content.append({
                 "type": "image",
@@ -234,6 +250,22 @@ class BedrockClient:
             # Ensure image data is base64 encoded
             if not self._is_base64(image_data):
                 image_data = base64.b64encode(image_data.encode()).decode()
+            
+            # NUCLEAR OPTION: Check ALL image data for size before sending to AWS
+            try:
+                encoded_size = len(image_data.encode('utf-8'))
+                encoded_mb = encoded_size / (1024 * 1024)
+                if encoded_size > 5 * 1024 * 1024:  # AWS 5MB limit on ENCODED data
+                    self.logger.error(f"💥 NUCLEAR FIREWALL TRIGGERED! 💥")
+                    self.logger.error(f"OVERSIZED IMAGE DETECTED: {encoded_mb:.2f}MB ({encoded_size} bytes)")
+                    self.logger.error(f"Image name: {name}")
+                    self.logger.error(f"THIS MEANS OUR SIZE PROTECTION FAILED!")
+                    raise ValueError(f"BLOCKED OVERSIZED IMAGE: {encoded_mb:.2f}MB ({encoded_size} bytes) from {name} - SIZE PROTECTION BYPASSED!")
+            except ValueError:
+                raise  # Re-raise ValueError (our custom error)
+            except Exception as size_check_error:
+                self.logger.error(f"Failed to validate image size for {name}: {size_check_error}")
+                raise
             
             # Build prompt, optionally prepending timestamp information so the model can reason about temporal order
             if timestamp:

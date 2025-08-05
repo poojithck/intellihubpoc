@@ -179,6 +179,8 @@ class UnifiedSORProcessor:
                                encoded_grids: List[Dict[str, str]], work_order_info: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a single SOR type using pre-encoded grids and shared BedrockClient."""
         
+
+        
         # Get pre-loaded prompt configuration for this SOR type
         prompt_config = self.prompt_configs[sor_type]
         model_params = self.model_params

@@ -3,12 +3,17 @@ PlugInMeterRemoval:
     You are an electrical-meter-board assessor.
     Task: decide whether **any plug-in meters were removed** between two images of the same board.
 
-    Definition – plug-in meter (for this task):
-      • rectangular electricity meter mounted on a distinctive **black back-plate / mounting plate**
-      • black plate clearly larger than the meter display area
-      • meter appears to “plug into” or mount onto this black plate
+    Definition – plug-in meter (FOCUS ON MOUNTING SYSTEM, NOT METER TYPE):
+      • ANY electricity meter (analog OR digital) mounted on a distinctive **black back-plate / mounting plate**
+      • black plate clearly visible behind/around the meter, larger than the meter display area
+      • meter appears to "plug into" or mount onto this black plate
+      • INCLUDES: old analog meters with black mounting plates
+      • INCLUDES: any digital meters with black mounting plates
 
-    Ignore devices without a black back-plate (analogue meters, Intellihub meters, SPDs, breakers, conduits, empty slots).
+    Ignore devices without a black back-plate:
+      • Direct-wired meters (no mounting plate visible)
+      • Intellihub meters, smart meters (typically direct-wired)
+      • SPDs, breakers, conduits, empty slots
 
   main_prompt: |
     You will receive several images from one work order (some may arrive as grids).
@@ -20,6 +25,14 @@ PlugInMeterRemoval:
 
       2. In each chosen image **count plug-in meters** using the definition above.
          Record the counts as **init_count** and **final_count**.
+         
+         CRITICAL: Use the presence of BLACK MOUNTING PLATES only to identify plug-in meters; when counting, focus on the meter devices themselves (display/housing) rather than the plates alone.
+         Example: "3 analog meters with black plates" → init_count = 3
+         Example: "2 digital meters, no black plates visible" → final_count = 0
+         Decision guide:
+           • plate + meter present  → count 1
+           • plate present, meter gone → count 0
+           • plate gone but new direct-wired meter present → count 0 (meter replaced, not removed)
 
       3. Decide **meters_removed**:
          true  = final_count < init_count   (at least one plug-in meter is gone)
@@ -33,14 +46,14 @@ PlugInMeterRemoval:
         "init_image": "<init filename>",
         "final_image": "<final filename>",
         "meters_removed": <true|false>,
-        "notes": "<≤25 words citing key visual evidence>"
+        "notes": "<≤25 words citing key visual evidence showing which plug-in meters remain and which are gone (may reference black plates and/or missing meter bodies)>"
       }
 
     If evidence is unclear, set meters_removed = false and explain briefly in **notes**.
 
   fallback_keywords:
-    positive: ["plug-in meter", "black backplate", "removed", "fewer meters", "reduction"]
-    negative: ["no change", "same number", "unchanged", "no removal", "unknown"]
+    positive: ["plug-in meter", "black backplate", "black mounting plate", "removed", "fewer meters", "reduction"]
+    negative: ["no change", "same number", "unchanged", "no removal", "unknown", "analog meter", "digital meter", "smart meter", "meter type", "meter replaced"]
 
   response_format:
     required_fields: ["init_count", "final_count", "init_image", "final_image", "meters_removed", "notes"]

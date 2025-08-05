@@ -21,8 +21,8 @@ analysis:
 paths:
   default_image_folder: "artefacts/Fuse-Replacement-Examples" 
 image_gridder:
-  images_per_grid: 4         # e.g., 2x2 grid
-  grid_width: 1200           # total width in pixels
+  images_per_grid: 2         # e.g., 2x2 grid
+  grid_width: 1200          # total width in pixels
   grid_height: 1200          # total height in pixels
   border_size: 10            # pixels between images
   background_color: "#FFFFFF" # white
