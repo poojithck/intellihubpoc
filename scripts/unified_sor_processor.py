@@ -227,14 +227,16 @@ class UnifiedSORProcessor:
     
     async def process_work_orders_batch(self, parent_folder: str, 
                                       sor_types: Optional[List[str]] = None,
-                                      max_work_orders: Optional[int] = None) -> Dict[str, Any]:
+                                      max_work_orders: Optional[int] = None,
+                                      batch_size: Optional[int] = None) -> Dict[str, Any]:
         """
-        Process multiple work orders in batch with efficient parallel grid generation.
+        Process multiple work orders in memory-efficient batches with parallel grid generation.
         
         Args:
             parent_folder: Path to parent folder containing work order sub-folders
             sor_types: List of SOR types to analyze (None = all enabled)
             max_work_orders: Maximum number of work orders to process (None = all)
+            batch_size: Number of work orders to process per memory batch (None = use config default)
             
         Returns:
             Dict with batch results and summary
@@ -262,17 +264,41 @@ class UnifiedSORProcessor:
             work_orders = work_orders[:max_work_orders]
             self.logger.info(f"Limited to {len(work_orders)} work orders (from {original_count} total)")
         
-        self.logger.info(f"Found {len(work_orders)} work orders to process")
+        # Get batch size from config if not provided
+        if batch_size is None:
+            batch_size = self.batch_config.get("batch_size", 10)
         
-        # Process work orders (always parallel - sequential mode removed as unused)
-        results = await self._process_work_orders_parallel(work_orders, sor_types)
+        self.logger.info(f"Found {len(work_orders)} work orders to process in batches of {batch_size}")
         
-        # Create batch summary
-        batch_summary = self._create_batch_summary(work_orders, results, sor_types)
+        # Process work orders in memory-efficient batches
+        overall_results = {}
+        
+        for batch_idx in range(0, len(work_orders), batch_size):
+            batch_end = min(batch_idx + batch_size, len(work_orders))
+            current_batch = work_orders[batch_idx:batch_end]
+            batch_num = (batch_idx // batch_size) + 1
+            total_batches = (len(work_orders) + batch_size - 1) // batch_size
+            
+            self.logger.info(f"Processing batch {batch_num}/{total_batches} ({len(current_batch)} work orders)")
+            
+            # Process current batch
+            batch_results = await self._process_work_orders_parallel(current_batch, sor_types)
+            
+            # Merge results into overall results
+            overall_results.update(batch_results)
+            
+            # Force garbage collection after each batch to free memory
+            import gc
+            gc.collect()
+            
+            self.logger.info(f"Completed batch {batch_num}/{total_batches}, total results: {len(overall_results)}")
+        
+        # Create batch summary using all work orders and results
+        batch_summary = self._create_batch_summary(work_orders, overall_results, sor_types)
         
         return {
             "batch_summary": batch_summary,
-            "work_order_results": results
+            "work_order_results": overall_results
         }
     
 
@@ -298,11 +324,14 @@ class UnifiedSORProcessor:
                 if not grids:
                     raise RuntimeError(f"No grid images could be created for work order {work_order_number}")
                 
-                # Encode grids
+                # Encode grids (this will also clean up PIL images)
                 output_format = self.default_settings.get("output_format", "PNG")
                 encoded_grids = self.gridder.encode_grids(grids, format=output_format)
                 
                 self.logger.info(f"Created {len(encoded_grids)} grid images for work order {work_order_number}")
+                
+                # Additional cleanup: explicitly delete grids list to free memory
+                del grids
                 
                 return work_order_number, (work_order, encoded_grids)
                 
@@ -613,7 +642,8 @@ async def main():
         batch_results = await processor.process_work_orders_batch(
             config["parent_folder"],
             sor_types=config["sor_types"],
-            max_work_orders=config["max_work_orders"]
+            max_work_orders=config["max_work_orders"],
+            batch_size=config["batch_size"]
         )
         
         end_time = time.time()

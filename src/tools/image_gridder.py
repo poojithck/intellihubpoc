@@ -242,4 +242,9 @@ class ImageGridder:
             })
         
         self.logger.info(f"Encoded {len(encoded_grids)} grid images for LLM input (all within {max_size_mb}MB limit)")
+        
+        # Clean up PIL Image objects to free memory
+        for _, grid_img in grids:
+            grid_img.close()
+        
         return encoded_grids 

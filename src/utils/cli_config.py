@@ -96,6 +96,12 @@ Examples:
             help="Save detailed JSON results (default: from config)"
         )
         
+        parser.add_argument(
+            "--batch-size",
+            type=int,
+            help="Number of work orders to process per memory batch (default: from config)"
+        )
+        
         return parser
     
     def resolve_config(self, args) -> Dict[str, Any]:
@@ -134,11 +140,16 @@ Examples:
             test_limit = self.sor_config.get("sor_analysis", {}).get("batch_processing", {}).get("test_max_work_orders", 5)
             max_work_orders = max_work_orders or test_limit
         
+        # Determine batch size (CLI > config default)
+        batch_size = (args.batch_size or 
+                     self.sor_config.get("sor_analysis", {}).get("batch_processing", {}).get("batch_size", 10))
+        
         return {
             "parent_folder": parent_folder,
             "sor_types": sor_types,
             "output_path": output_path,
             "max_work_orders": max_work_orders,
+            "batch_size": batch_size,
             "output_format": args.output_format,
             "save_json": args.save_json,
             "test_mode": args.test_mode or self.cli_defaults.get("test_mode", False),
@@ -150,7 +161,7 @@ Examples:
         print(f"Starting unified SOR processing...")
         print(f"Parent folder: {config['parent_folder']}")
         print(f"SOR types: {config['sor_types'] if config['sor_types'] else 'All enabled'}")
-        print(f"Processing mode: Parallel")
+        print(f"Processing mode: Parallel (batch size: {config['batch_size']})")
         print(f"Output path: {config['output_path']}")
         
         if config['max_work_orders']:

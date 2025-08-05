@@ -154,6 +154,7 @@ sor_analysis:
     max_concurrent_work_orders: 8  # Increased from 3 to 8 for better throughput
     max_concurrent_sor_types: 8  # Process up to 8 SOR types concurrently within each work order (was 4)
     api_rate_limit_delay: 0.0  # No delay - we're well under rate limits with optimized connection pooling
+    batch_size: 10  # Number of work orders to process in each memory batch (prevents OOM issues)
     
   # CLI configuration defaults
   cli_defaults:
