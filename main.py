@@ -14,13 +14,13 @@ from src.utils import setup_logging
 
 async def main():
     """Main orchestration function."""
-    # Setup logging
-    setup_logging()
-    logger = logging.getLogger(__name__)
-    
     try:
-        # Initialize configuration manager
+        # Initialize configuration manager first
         config_manager = ConfigManager()
+        
+        # Setup logging with config manager
+        setup_logging(config_manager)
+        logger = logging.getLogger(__name__)
         
         # Get SOR analysis configuration
         sor_config = config_manager.get_config("sor_analysis_config")
@@ -45,7 +45,8 @@ async def main():
         
         # Get batch processing configuration
         batch_config = sor_config.get("sor_analysis", {}).get("batch_processing", {})
-        parent_folder = batch_config.get("parent_folder", "artefacts")
+        # Get parent folder from default_paths (correct location)
+        parent_folder = sor_config.get("sor_analysis", {}).get("default_paths", {}).get("batch_parent_folder", "artefacts")
         max_work_orders = batch_config.get("max_work_orders", 10)
         batch_size = batch_config.get("batch_size", 5)
         
@@ -61,14 +62,19 @@ async def main():
             batch_size=batch_size
         )
         
-        # Generate results table
-        output_path = "outputs/sor_results"
+        # Generate results table using configured batch output folder
+        batch_output_folder = sor_config.get("sor_analysis", {}).get("default_paths", {}).get("batch_output_folder", "outputs/batch_results")
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = f"{batch_output_folder}_{timestamp}"
         table_path = processor.generate_results_table(results, output_path)
         
         logger.info(f"Processing completed successfully!")
         logger.info(f"Results table generated at: {table_path}")
-        logger.info(f"Total work orders processed: {results['summary']['total_work_orders']}")
-        logger.info(f"Total cost: ${results['summary']['total_cost']:.4f}")
+        # Handle both Azure (batch_summary) and Bedrock (summary) return structures
+        summary_key = 'batch_summary' if 'batch_summary' in results else 'summary'
+        logger.info(f"Total work orders processed: {results[summary_key]['total_work_orders']}")
+        logger.info(f"Total cost: ${results[summary_key]['total_cost']:.4f}")
         
     except Exception as e:
         logger.error(f"Failed to process SOR analysis: {str(e)}")

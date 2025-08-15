@@ -75,7 +75,7 @@ class AzureOpenAIClient:
         prompt: str, 
         max_tokens: int = 300, 
         temperature: float = 0.7,
-        images: Optional[List[Dict[str, str]] = None
+        images: Optional[List[Dict[str, str]]] = None
     ) -> Dict[str, Any]:
         """
         Invoke the model with the given prompt and optional images.
