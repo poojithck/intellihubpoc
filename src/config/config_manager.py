@@ -79,6 +79,30 @@ class ConfigManager:
         """Get AWS and Bedrock configuration."""
         return self.load_config("aws_config")
     
+    def get_azure_config(self) -> Dict[str, Any]:
+        """Get Azure OpenAI configuration."""
+        return self.load_config("azure_config")
+    
+    def get_azure_openai_config(self) -> Dict[str, Any]:
+        """Get Azure OpenAI specific configuration."""
+        azure_config = self.get_azure_config()
+        return azure_config.get("azure_openai", {})
+    
+    def get_azure_pricing_config(self) -> Dict[str, Any]:
+        """Get Azure OpenAI pricing configuration."""
+        azure_config = self.get_azure_openai_config()
+        model_family = azure_config.get("model", {}).get("family", "gpt-4o-mini")
+        pricing = azure_config.get("pricing", {})
+        
+        if model_family in pricing:
+            return pricing[model_family]
+        else:
+            # Default to gpt-4o-mini pricing
+            return pricing.get("gpt_4o_mini", {
+                "input_price_per_1k": 0.0001,
+                "output_price_per_1k": 0.0002
+            })
+    
     def get_app_config(self) -> Dict[str, Any]:
         """Get application configuration."""
         return self.load_config("app_config")

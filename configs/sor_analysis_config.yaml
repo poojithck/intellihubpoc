@@ -2,6 +2,9 @@
 # This file defines which SOR types to analyze and their specific parameters
 
 sor_analysis:
+  # Client type selection (aws or azure)
+  client_type: "aws"  # Options: "aws" or "azure"
+  
   # Default settings for all SOR analyses
   default_settings:
     output_format: "PNG"

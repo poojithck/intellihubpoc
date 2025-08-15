@@ -1,0 +1,57 @@
+# Azure OpenAI Configuration
+# This file contains all Azure-specific configuration settings
+
+azure_openai:
+  # Azure OpenAI endpoint (from your Azure portal)
+  endpoint: "https://your-resource.openai.azure.com/"
+  
+  # API version for Azure OpenAI
+  api_version: "2024-02-15-preview"
+  
+  # Deployment name (the model deployment you created in Azure)
+  deployment_name: "your-deployment-name"
+  
+  # Key Vault configuration for secure credential management
+  keyvault:
+    name: "your-keyvault-name"
+    # Authentication method will be implemented later (SSO/Fabric)
+    # For now, you can use environment variables as fallback
+    
+  # Fallback authentication (environment variables)
+  fallback_auth:
+    api_key_env_var: "AZURE_OPENAI_API_KEY"
+    endpoint_env_var: "AZURE_OPENAI_ENDPOINT"
+    deployment_env_var: "AZURE_OPENAI_DEPLOYMENT"
+    
+  # Azure OpenAI model configuration
+  model:
+    # Model family (e.g., gpt-4o, gpt-4o-mini)
+    family: "gpt-4o-mini"
+    
+    # Default parameters
+    default_max_tokens: 1000
+    default_temperature: 0.1
+    
+  # Pricing configuration (per 1K tokens)
+  pricing:
+    gpt_4o_mini:
+      input_price_per_1k: 0.0001
+      output_price_per_1k: 0.0002
+    gpt_4o:
+      input_price_per_1k: 0.005
+      output_price_per_1k: 0.015
+    gpt_35_turbo:
+      input_price_per_1k: 0.0005
+      output_price_per_1k: 0.0015
+      
+  # Connection settings
+  connection:
+    max_pool_connections: 100
+    connect_timeout: 60
+    read_timeout: 300
+    max_retries: 3
+    
+  # Image processing limits
+  image_limits:
+    max_size_mb: 20  # Azure OpenAI 20MB limit
+    supported_formats: ["png", "jpg", "jpeg", "gif", "webp"]
