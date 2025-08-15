@@ -340,7 +340,8 @@ class UnifiedSORProcessor:
                     def load_folder(folder_path: Path) -> list:
                         if folder_path in folder_cache:
                             return folder_cache[folder_path]
-                        loader = ImageLoader(str(folder_path))
+                        # Use AWS Bedrock's 5MB limit
+                        loader = ImageLoader(str(folder_path), max_size_mb=5.0)
                         images = loader.load_images_to_memory(single=False)
                         if not images:
                             return []
@@ -380,7 +381,8 @@ class UnifiedSORProcessor:
                     if not grids:
                         raise RuntimeError(f"No grid images could be created for work order {work_order_number}")
                     output_format = self.default_settings.get("output_format", "PNG")
-                    encoded_grids = self.gridder.encode_grids(grids, format=output_format)
+                    # Use AWS Bedrock's 5MB limit for grid images
+                    encoded_grids = self.gridder.encode_grids(grids, format=output_format, max_size_mb=5.0)
                     del grids
                     return work_order_number, (work_order, {"__grids__": encoded_grids})
             except Exception as e:

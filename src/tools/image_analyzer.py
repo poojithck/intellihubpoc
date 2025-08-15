@@ -89,8 +89,8 @@ class ImageAnalyzer:
         # Get image processing configuration
         img_config = self.config_manager.get_image_processing_config()
         
-        # Initialize image loader
-        loader = ImageLoader(image_folder)
+        # Initialize image loader with AWS Bedrock's 5MB limit
+        loader = ImageLoader(image_folder, max_size_mb=5.0)
         
         # Load images to memory
         images = loader.load_images_to_memory(single=False)

@@ -142,7 +142,7 @@ class ImageGridder:
         return grids
 
 
-    def encode_grids(self, grids: List[Tuple[str, Image.Image]], format: str = "PNG") -> List[dict]:
+    def encode_grids(self, grids: List[Tuple[str, Image.Image]], format: str = "PNG", max_size_mb: float = 5.0) -> List[dict]:
         """
         Encode grid images to base64 for LLM input.
         Size limiting is now handled automatically by ImageLoader.encode_single_image().
@@ -150,15 +150,19 @@ class ImageGridder:
         Args:
             grids: List of (name, PIL.Image) tuples
             format: Image format for encoding (default: PNG)
+            max_size_mb: Maximum allowed image size in MB (default: 5.0 for AWS compatibility)
         Returns:
             List of dicts with 'name', 'data', and 'timestamp' (None)
         """
         from .image_loader import ImageLoader
         encoded_grids = []
         
+        # Create ImageLoader instance with size limit
+        loader = ImageLoader("", max_size_mb=max_size_mb)
+        
         for grid_name, grid_img in grids:
-            # ImageLoader.encode_single_image() now automatically handles size limiting
-            encoded_data = ImageLoader.encode_single_image(grid_img, format=format)
+            # Use instance method for size limiting
+            encoded_data = loader.encode_single_image(grid_img, format=format)
             
             # Log the final size for monitoring
             size_mb = len(base64.b64decode(encoded_data)) / (1024 * 1024)

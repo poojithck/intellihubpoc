@@ -193,3 +193,8 @@ sor_analysis:
     include_metadata: true
     include_costs: true
     sort_by_work_order: true 
+    
+  # Client-specific image size limits
+  client_image_limits:
+    aws: 5.0    # AWS Bedrock 5MB limit (base64 encoded)
+    azure: 20.0 # Azure OpenAI 20MB limit

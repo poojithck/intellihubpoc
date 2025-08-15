@@ -17,14 +17,16 @@ class ImageLoader:
     
     logger = logging.getLogger(__name__)
 
-    def __init__(self, image_path: str) -> None:
+    def __init__(self, image_path: str, max_size_mb: float = 5.0) -> None:
         """
         Initialize ImageLoader with image path.
         
         Args:
             image_path: Path to single image file or directory containing images
+            max_size_mb: Maximum allowed image size in MB (default: 5.0 for AWS compatibility)
         """
         self.image_path = Path(image_path)
+        self.max_size_mb = max_size_mb
         self._logger = logging.getLogger(__name__)
 
     def load_images_to_memory(self, single: bool = False) -> Union[Image.Image, List[Tuple[str, Image.Image]], None]:
@@ -199,8 +201,8 @@ class ImageLoader:
         
         for name, image in images:
             try:
-                # Use the bulletproof encode_single_image method which handles size limiting
-                img_str = ImageLoader.encode_single_image(image, format=format)
+                # Use the instance encode_single_image method which handles size limiting
+                img_str = self.encode_single_image(image, format=format)
                 
                 # Retrieve previously stored timestamp (if any)
                 timestamp = image.info.get('timestamp')
@@ -217,23 +219,23 @@ class ImageLoader:
         self._logger.info(f"Successfully encoded {len(encoded_images)} images")
         return encoded_images
 
-    @staticmethod
-    def encode_single_image(image: Image.Image, format: str = "PNG") -> str:
+    def encode_single_image(self, image: Image.Image, format: str = "PNG") -> str:
         """
         Encode a single image to base64 string with automatic size limiting.
-        Guarantees output is ≤4.5MB to meet AWS Bedrock requirements.
+        Guarantees output is within the configured size limit.
         
         Args:
             image: PIL Image object
             format: Image format for encoding (default: PNG)
         Returns:
-            Base64 encoded image string (guaranteed ≤4.5MB)
+            Base64 encoded image string (guaranteed within size limit)
         Raises:
             OSError: If encoding fails
-            ValueError: If image cannot be compressed below 4.5MB limit
+            ValueError: If image cannot be compressed below the configured limit
         """
-        MAX_AWS_ENCODED_MB = 5.0  # AWS Bedrock limit is on BASE64 ENCODED size, not raw bytes
-        TARGET_MAX_RAW_MB = 3.7  # ~3.7MB raw -> 4.93MB encoded
+        # Use instance variable for size limit
+        MAX_ENCODED_MB = self.max_size_mb
+        TARGET_MAX_RAW_MB = MAX_ENCODED_MB * 0.74  # ~74% of encoded size for raw bytes
         
         def _encode_to_b64(img: Image.Image) -> str:
             """Helper to encode PIL image to base64."""
@@ -254,20 +256,20 @@ class ImageLoader:
         raw_size_mb = len(base64.b64decode(data)) / (1024 * 1024)
         
         # Debug logging for large images
-        if encoded_size_mb > MAX_AWS_ENCODED_MB:
+        if encoded_size_mb > MAX_ENCODED_MB:
             import traceback
-            ImageLoader.logger.error(
+            self._logger.error(
                 f"LARGE IMAGE DETECTED: raw={raw_size_mb:.2f}MB, encoded={encoded_size_mb:.2f}MB - Size: {image.size}, Mode: {image.mode}")
-            ImageLoader.logger.error(f"Call stack: {traceback.format_stack()[-3:-1]}")
+            self._logger.error(f"Call stack: {traceback.format_stack()[-3:-1]}")
         else:
-            ImageLoader.logger.info(
+            self._logger.info(
                 f"Image encoded: raw={raw_size_mb:.2f}MB, encoded={encoded_size_mb:.2f}MB - Size: {image.size}, Mode: {image.mode}")
         
-        if encoded_size_mb <= MAX_AWS_ENCODED_MB:
+        if encoded_size_mb <= MAX_ENCODED_MB:
             return data  # Fast path - image is already within limits
         
-        ImageLoader.logger.warning(
-            f"Image encoded size is {encoded_size_mb:.2f}MB, exceeds {MAX_AWS_ENCODED_MB}MB limit. Auto-compressing...")
+        self._logger.warning(
+            f"Image encoded size is {encoded_size_mb:.2f}MB, exceeds {MAX_ENCODED_MB}MB limit. Auto-compressing...")
         
         # If target is JPEG, try quality reduction first (much faster than resampling)
         if format.upper() == 'JPEG':
@@ -278,8 +280,8 @@ class ImageLoader:
                     rgb_img.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True)
                     jpeg_b64 = base64.b64encode(jpeg_buffer.getvalue()).decode('utf-8')
                     encoded_jpeg_mb = len(jpeg_b64.encode('utf-8')) / (1024 * 1024)
-                    if encoded_jpeg_mb <= MAX_AWS_ENCODED_MB:
-                        ImageLoader.logger.info(f"JPEG quality reduction: quality={quality}, encoded={encoded_jpeg_mb:.2f}MB")
+                    if encoded_jpeg_mb <= MAX_ENCODED_MB:
+                        self._logger.info(f"JPEG quality reduction: quality={quality}, encoded={encoded_jpeg_mb:.2f}MB")
                         return jpeg_b64
                 except Exception:
                     continue
@@ -297,8 +299,8 @@ class ImageLoader:
             encoded_final_mb = len(data.encode('utf-8')) / (1024 * 1024)
             raw_final_mb = len(base64.b64decode(data)) / (1024 * 1024)
             
-            if encoded_final_mb <= MAX_AWS_ENCODED_MB:
-                ImageLoader.logger.info(
+            if encoded_final_mb <= MAX_ENCODED_MB:
+                self._logger.info(
                     f"Auto-compressed image from encoded={encoded_size_mb:.2f}MB to encoded={encoded_final_mb:.2f}MB via {factor*100:.0f}% resize (raw {raw_final_mb:.2f}MB)")
                 return data
         
@@ -310,13 +312,13 @@ class ImageLoader:
                 rgb_img.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True)
                 jpeg_b64 = base64.b64encode(jpeg_buffer.getvalue()).decode('utf-8')
                 encoded_jpeg_mb = len(jpeg_b64.encode('utf-8')) / (1024 * 1024)
-                if encoded_jpeg_mb <= MAX_AWS_ENCODED_MB:
-                    ImageLoader.logger.info(f"JPEG fallback succeeded: quality={quality}, encoded={encoded_jpeg_mb:.2f}MB")
+                if encoded_jpeg_mb <= MAX_ENCODED_MB:
+                    self._logger.info(f"JPEG fallback succeeded: quality={quality}, encoded={encoded_jpeg_mb:.2f}MB")
                     return jpeg_b64
         
         # Last resort – raise explicit error
         raise ValueError(
-            f"Image still encoded size {encoded_final_mb:.2f}MB after all compression steps (exceeds {MAX_AWS_ENCODED_MB}MB AWS limit)")
+            f"Image still encoded size {encoded_final_mb:.2f}MB after all compression steps (exceeds {MAX_ENCODED_MB}MB configured limit)")
 
     def get_supported_formats(self) -> Tuple[str, ...]:
         """Get list of supported image formats."""

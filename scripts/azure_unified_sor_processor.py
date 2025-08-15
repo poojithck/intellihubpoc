@@ -307,7 +307,8 @@ class AzureUnifiedSORProcessor:
                 def load_folder(folder_path: Path) -> list:
                     if folder_path in folder_cache:
                         return folder_cache[folder_path]
-                    loader = ImageLoader(str(folder_path))
+                    # Use Azure's 20MB limit for better image quality
+                    loader = ImageLoader(str(folder_path), max_size_mb=20.0)
                     images = loader.load_images_to_memory(single=False)
                     if not images:
                         return []

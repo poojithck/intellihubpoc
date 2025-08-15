@@ -35,14 +35,17 @@ azure_openai:
   # Pricing configuration (per 1K tokens)
   pricing:
     gpt_4o_mini:
-      input_price_per_1k: 0.0001
-      output_price_per_1k: 0.0002
+      input_price_per_1k: 0.000165
+      output_price_per_1k: 0.00066
     gpt_4o:
-      input_price_per_1k: 0.005
-      output_price_per_1k: 0.015
+      input_price_per_1k: 0.0055
+      output_price_per_1k: 0.0165
     gpt_35_turbo:
-      input_price_per_1k: 0.0005
-      output_price_per_1k: 0.0015
+      input_price_per_1k: 0.00055
+      output_price_per_1k: 0.00165
+    o3:
+      input_price_per_1k: 0.0022
+      output_price_per_1k: 0.0088
       
   # Connection settings
   connection:
