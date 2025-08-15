@@ -6,8 +6,7 @@ import logging
 import base64
 import binascii
 from datetime import datetime
-from azure.openai import AzureOpenAI
-from azure.core.credentials import AzureKeyCredential
+from openai import AzureOpenAI
 
 class AzureOpenAIClient:
     
