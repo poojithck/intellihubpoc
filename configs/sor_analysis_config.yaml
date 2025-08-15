@@ -6,6 +6,8 @@ sor_analysis:
   default_settings:
     output_format: "PNG"
     model_config: "analysis"
+  # Use targeted prompts from nested folder
+  prompt_subdir: "prompts/Targeted-Prompts"
     
   # Define available SOR types and their configurations
   sor_types:
@@ -14,8 +16,6 @@ sor_analysis:
       description: "Analyzes asbestos bag and meter board for asbestos claims"
       prompt_config: "AsbestosBagAndBoard"
       required_fields:
-        - "Asbestos_bag_image"
-        - "Meter_board_image" 
         - "National_Meter_Identifier"
         - "Date_On_Bag"
         - "Valid_Claim"
@@ -26,8 +26,6 @@ sor_analysis:
       description: "Analyzes meter board for compliance certificate"
       prompt_config: "CertificateOfCompliance"
       required_fields:
-        - "Certificate_image"
-        - "Certificate_type"
         - "Electrical_Work_Present"
         - "Valid_Certificate"
         - "Notes"
@@ -37,7 +35,6 @@ sor_analysis:
       description: "Analyzes fuse replacement evidence"
       prompt_config: "FuseReplacement"
       required_fields:
-        - "fuse_image"
         - "fuse_count"
         - "is_even_count"
         - "valid_claim"
@@ -50,8 +47,6 @@ sor_analysis:
       required_fields:
         - "init_count"
         - "final_count"
-        - "init_image"
-        - "final_image"
         - "consolidation"
         - "notes"
         
@@ -62,8 +57,6 @@ sor_analysis:
       required_fields:
         - "init_count"
         - "final_count"
-        - "init_image"
-        - "final_image"
         - "meters_removed"
         - "notes"
         
@@ -74,8 +67,6 @@ sor_analysis:
       required_fields:
         - "init_count"
         - "final_count"
-        - "init_image"
-        - "final_image"
         - "devices_added"
         - "notes"
         
@@ -84,8 +75,6 @@ sor_analysis:
       description: "Analyzes switch installation evidence"
       prompt_config: "SwitchInstallation"
       required_fields:
-        - "init_image"
-        - "final_image"
         - "switch_installed"
         - "switch_count"
         - "notes"
@@ -97,8 +86,6 @@ sor_analysis:
       required_fields:
         - "init_count"
         - "final_count"
-        - "init_image"
-        - "final_image"
         - "neutral_link_installed"
         - "notes"
         
@@ -123,7 +110,7 @@ sor_analysis:
   # Default folder paths
   default_paths:
     single_sor_image_folder: "artefacts/Fuse-Replacement-Examples"
-    batch_parent_folder: "C:/Users/George.Nizoridis/OneDrive - Service Stream/Admin/Intellihub AI Analysis/All-WOs"
+    batch_parent_folder: "C:/Users/George.Nizoridis/OneDrive - Service Stream/Admin/Intellihub AI Analysis/All-WOs - Copy"
     batch_output_folder: "outputs/batch_results"
     
   # Batch processing configuration
@@ -138,13 +125,30 @@ sor_analysis:
     max_concurrent_sor_types: 9  # Process up to 8 SOR types concurrently within each work order (was 4)
     api_rate_limit_delay: 0.3  # No delay - we're well under rate limits with optimized connection pooling
     batch_size: 5  # Number of work orders to process in each memory batch (prevents OOM issues)
+
+  # Targeted image feeding configuration
+  targeted_images:
+    enabled: true
+    default_folder: "Meter Board"
+    # Optional cap to reduce per-SOR payload size and speed up processing
+    max_images_per_sor: 6
+    folder_mapping:
+      MeterConsolidationE4: ["Meter Board"]
+      PlugInMeterRemoval: ["Meter Board"]
+      ServiceProtectionDevices: ["Meter Board"]
+      SwitchInstallation: ["Switch", "Meter Board"]
+      NeutralLinkInstallation: ["Link Replacement", "Meter Board"]
+      FuseReplacement: ["Fuze"]
+      CertificateOfCompliance: ["Compliance"]
+      AsbestosBagAndBoard: ["Asbestos"]
+      meter_reading: ["Meter Board"]
     
   # CLI configuration defaults
   cli_defaults:
     test_mode: false
     output_format: "both"  # csv, excel, both
     save_json: true
-    max_work_orders: null  # null = use all available
+    max_work_orders: 10  # cap default processing to 10 work orders
     parent_folder: null    # null = use default_paths.batch_parent_folder
     output_path: null      # null = use default_paths.batch_output_folder with timestamp
     sor_list: null         # null = use all enabled
@@ -173,14 +177,14 @@ sor_analysis:
       NeutralLinkInstallation: "notes"
       meter_reading: "notes"
     additional_fields:
-      AsbestosBagAndBoard: ["National_Meter_Identifier", "Date_On_Bag", "Asbestos_bag_image", "Meter_board_image"]
-      CertificateOfCompliance: ["Certificate_type", "Electrical_Work_Present", "Certificate_image"]
-      FuseReplacement: ["fuse_count", "is_even_count", "fuse_image"]
-      MeterConsolidationE4: ["init_count", "final_count", "init_image", "final_image"]
-      PlugInMeterRemoval: ["init_count", "final_count", "init_image", "final_image"]
-      ServiceProtectionDevices: ["init_count", "final_count", "init_image", "final_image"]
-      SwitchInstallation: ["switch_count", "init_image", "final_image"]
-      NeutralLinkInstallation: ["init_count", "final_count", "init_image", "final_image"]
+      AsbestosBagAndBoard: ["National_Meter_Identifier", "Date_On_Bag"]
+      CertificateOfCompliance: ["Electrical_Work_Present"]
+      FuseReplacement: ["fuse_count", "is_even_count"]
+      MeterConsolidationE4: ["init_count", "final_count"]
+      PlugInMeterRemoval: ["init_count", "final_count"]
+      ServiceProtectionDevices: ["init_count", "final_count"]
+      SwitchInstallation: ["switch_count"]
+      NeutralLinkInstallation: ["init_count", "final_count"]
       meter_reading: ["possible_values", "meter_type", "confidence"]
     output_formats: ["csv", "excel"]
     include_metadata: true

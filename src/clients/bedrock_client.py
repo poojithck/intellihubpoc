@@ -160,7 +160,7 @@ class BedrockClient:
                 "type": "image",
                 "source": {
                     "type": "base64",
-                    "media_type": "image/png",
+                    "media_type": image_info.get('media_type', 'image/png'),
                     "data": image_data
                 }
             })
@@ -281,7 +281,7 @@ class BedrockClient:
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": "image/png",
+                                "media_type": image_info.get('media_type', 'image/png'),
                                 "data": image_data
                             }
                         },

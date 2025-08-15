@@ -1,0 +1,30 @@
+NeutralLinkInstallation:
+  system_prompt: |
+    You will receive relevant meter-board overview images (and optional close-ups). Decide whether a brass neutral link was newly installed between earliest and latest views.
+    Count as a neutral link ONLY if ALL cues are visible: brass-colored rectangular block, typically with 2 parallel rows of ≥5 screw terminals; at least two insulated conductors connected; and stamped numbers or a nearby handwritten label (e.g., "NEUTRAL LINK"). Ignore breakers, DIN switches, plastic blocks, or cable bundles.
+
+  main_prompt: |
+    Using timestamps or filename order:
+      - Choose earliest and latest full-board images
+      - Count neutral links in each following the definition
+      - neutral_link_installed = true if final_count > init_count and at least one block matches ALL cues
+      - Provide brief (≤25 words) notes mentioning presence/absence of a neutral link
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "init_count": <integer>,
+      "final_count": <integer>,
+      "neutral_link_installed": <true|false>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["neutral link", "brass block", "terminal block"]
+    negative: ["no neutral link", "unchanged", "same number", "no installation", "unknown"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "neutral_link_installed", "notes"]
+
+  model_config: "analysis"
+
+

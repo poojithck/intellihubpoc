@@ -100,19 +100,35 @@ class ConfigManager:
         
         return claude_config["models"][model_name]
     
-    def get_prompt_config(self, analysis_type: str) -> Dict[str, Any]:
+    def get_prompt_config(self, analysis_type: str, prompts_subdir: Optional[str] = None) -> Dict[str, Any]:
         """
         Get prompt configuration for a specific analysis type.
         
         Args:
             analysis_type: Type of analysis (e.g., "fuse_analysis")
+            prompts_subdir: Optional subdirectory under configs/ to load prompts from.
+                             Defaults to "prompts". Can be a nested path like
+                             "prompts/Targeted-Prompts".
             
         Returns:
             Prompt configuration dictionary
         """
-        config_data = self.load_config(analysis_type, "prompts")
+        subdir = prompts_subdir or "prompts"
+        try:
+            config_data = self.load_config(analysis_type, subdir)
+        except FileNotFoundError:
+            # Fallback to default prompts directory if targeted/nested not found
+            if subdir != "prompts":
+                config_data = self.load_config(analysis_type, "prompts")
+            else:
+                raise
         
         if analysis_type not in config_data:
+            # If structure differs, attempt fallback once more to default
+            if subdir != "prompts":
+                fallback_data = self.load_config(analysis_type, "prompts")
+                if analysis_type in fallback_data:
+                    return fallback_data[analysis_type]
             raise ValueError(f"Prompt configuration not found: {analysis_type}")
         
         return config_data[analysis_type]

@@ -269,6 +269,21 @@ class ImageLoader:
         ImageLoader.logger.warning(
             f"Image encoded size is {encoded_size_mb:.2f}MB, exceeds {MAX_AWS_ENCODED_MB}MB limit. Auto-compressing...")
         
+        # If target is JPEG, try quality reduction first (much faster than resampling)
+        if format.upper() == 'JPEG':
+            for quality in [95, 90, 85, 80, 75, 70, 65, 60, 55]:
+                try:
+                    jpeg_buffer = io.BytesIO()
+                    rgb_img = image.convert('RGB') if image.mode != 'RGB' else image
+                    rgb_img.save(jpeg_buffer, format='JPEG', quality=quality, optimize=True)
+                    jpeg_b64 = base64.b64encode(jpeg_buffer.getvalue()).decode('utf-8')
+                    encoded_jpeg_mb = len(jpeg_b64.encode('utf-8')) / (1024 * 1024)
+                    if encoded_jpeg_mb <= MAX_AWS_ENCODED_MB:
+                        ImageLoader.logger.info(f"JPEG quality reduction: quality={quality}, encoded={encoded_jpeg_mb:.2f}MB")
+                        return jpeg_b64
+                except Exception:
+                    continue
+        
         # Progressive minimal-loss resize: 95%, 90%, 85%, 80%, 75%, 70%, 65%, 60%, 55%, 50%
         resize_factors = [0.95, 0.90, 0.85, 0.80, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50]
         encoded_final_mb = encoded_size_mb  # Initialize for error message
@@ -287,7 +302,7 @@ class ImageLoader:
                     f"Auto-compressed image from encoded={encoded_size_mb:.2f}MB to encoded={encoded_final_mb:.2f}MB via {factor*100:.0f}% resize (raw {raw_final_mb:.2f}MB)")
                 return data
         
-                # Fallback 2 – convert to JPEG and vary quality
+        # Fallback 2 – convert to JPEG and vary quality (only if not already JPEG)
         if format.upper() != 'JPEG':
             for quality in [95, 90, 85, 80, 75, 70, 60, 50]:
                 jpeg_buffer = io.BytesIO()

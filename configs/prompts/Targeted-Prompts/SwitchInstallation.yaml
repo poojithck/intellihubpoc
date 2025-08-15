@@ -1,0 +1,29 @@
+SwitchInstallation:
+  system_prompt: |
+    You will receive relevant images (including switch close-ups and board overviews). Detect installation of 1-, 2-, or 3-phase isolating switches between earliest and latest views.
+    A valid switch has 1–3 linked toggles/levers that act together and labels like ON/OFF or ISOLATOR/MAIN SWITCH. Ignore clusters >3 linked switches, breakers, meters, fuses, or unchanged/old switches.
+
+  main_prompt: |
+    Using timestamps or filename order:
+      - Pick earliest and latest full-board images; consider supplementary switch close-ups to confirm newness
+      - Count newly installed switches (0–3)
+      - switch_installed = true if switch_count ≥ 1
+      - Provide brief (≤25 words) notes
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "switch_installed": <true|false>,
+      "switch_count": <integer 0-3>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["main switch", "isolator", "new switch"]
+    negative: ["unknown", "no switch", "unchanged", "no installation"]
+
+  response_format:
+    required_fields: ["switch_installed", "switch_count", "notes"]
+
+  model_config: "analysis"
+
+

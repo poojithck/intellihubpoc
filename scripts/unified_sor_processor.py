@@ -84,14 +84,24 @@ class UnifiedSORProcessor:
         self.batch_config = self.sor_config.get("sor_analysis", {}).get("batch_processing", {})
         self.default_settings = self.sor_config.get("sor_analysis", {}).get("default_settings", {})
         
+        # Determine prompts subdirectory (allows switching to Targeted-Prompts)
+        self.prompts_subdir = self.sor_config.get("sor_analysis", {}).get("prompt_subdir", None)
+
         # Pre-load all prompt configs to avoid concurrent loading during processing
         self.prompt_configs = {}
         self.model_params = config_manager.get_model_params(config_type=self.default_settings.get("model_config", "analysis"))
         
         for sor_type in self.get_enabled_sor_types():
-            self.prompt_configs[sor_type] = config_manager.get_prompt_config(sor_type)
+            self.prompt_configs[sor_type] = config_manager.get_prompt_config(sor_type, prompts_subdir=self.prompts_subdir)
         
         self.logger.info(f"Pre-loaded {len(self.prompt_configs)} prompt configurations")
+
+        # Configure targeted feeder behavior
+        targeted_cfg = self.sor_config.get("sor_analysis", {}).get("targeted_images", {})
+        self.targeted_mode = targeted_cfg.get("enabled", False)
+        self.folder_mapping = targeted_cfg.get("folder_mapping", {})
+        self.default_folder_name = targeted_cfg.get("default_folder", "Meter Board")
+        self.max_images_per_sor = int(targeted_cfg.get("max_images_per_sor", 0) or 0)
         
     def get_enabled_sor_types(self) -> List[str]:
         """Get list of enabled SOR types from configuration."""
@@ -160,30 +170,35 @@ class UnifiedSORProcessor:
         return work_orders
     
     def _count_images_in_folder(self, folder_path: Path) -> int:
-        """Count image files in a folder."""
-        from src.tools.image_loader import ImageLoader
-        supported_extensions = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp']
-        
-        count = 0
-        for file_path in folder_path.iterdir():
-            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
-                count += 1
-        
-        return count
+        """Count image files in a folder recursively (includes subfolders)."""
+        supported_extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp'}
+        return sum(1 for p in folder_path.rglob('*') if p.is_file() and p.suffix.lower() in supported_extensions)
     
 
     
 
     
     async def _analyze_sor_type(self, sor_type: str, work_order_path: str, 
-                               encoded_grids: List[Dict[str, str]], work_order_info: Dict[str, Any]) -> Dict[str, Any]:
-        """Analyze a single SOR type using pre-encoded grids and shared BedrockClient."""
+                               images: List[Dict[str, str]], work_order_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Analyze a single SOR type using provided images (targeted or grids)."""
         
 
         
         # Get pre-loaded prompt configuration for this SOR type
         prompt_config = self.prompt_configs[sor_type]
         model_params = self.model_params
+
+        # Compose final prompt: include system + main for clarity (system may contain strict definitions)
+        system_prompt = (prompt_config.get("system_prompt") or "").strip()
+        main_prompt = (prompt_config.get("main_prompt") or "").strip()
+        prompt_text = (f"{system_prompt}\n\n---\n\n{main_prompt}" if system_prompt else main_prompt).strip()
+
+        # Debug preview to verify correct prompt dispatch per SOR
+        try:
+            preview = (prompt_text[:300] + ("…" if len(prompt_text) > 300 else ""))
+            self.logger.debug(f"Prompt preview for {sor_type}: {preview}")
+        except Exception:
+            pass
         
         # Run synchronous Bedrock call in thread pool for true async concurrency
         loop = asyncio.get_event_loop()
@@ -191,8 +206,8 @@ class UnifiedSORProcessor:
             response = await loop.run_in_executor(
                 executor,
                 lambda: self.bedrock_client.invoke_model_multi_image(
-                    prompt=prompt_config["main_prompt"],
-                    images=encoded_grids,
+                    prompt=prompt_text,
+                    images=images,
                     max_tokens=model_params.get("max_tokens"),
                     temperature=model_params.get("temperature")
                 )
@@ -312,33 +327,64 @@ class UnifiedSORProcessor:
         max_concurrent_sors = self.batch_config.get("max_concurrent_work_orders", 8) * self.batch_config.get("max_concurrent_sor_types", 8)
         self.global_sor_semaphore = asyncio.Semaphore(max_concurrent_sors)
         
-        def create_grids_sync(work_order: Dict[str, Any]) -> tuple[str, Any]:
-            """Synchronous grid creation function for thread pool execution."""
+        def prepare_images_sync(work_order: Dict[str, Any]) -> tuple[str, Any]:
+            """Prepare encoded images (targeted or grids) for thread pool execution."""
             work_order_number = work_order["work_order_number"]
             work_order_path = work_order["path"]
-            
             try:
-                self.logger.info(f"Creating grids for work order {work_order_number}")
-                
-                # Generate grid images for this work order (CPU intensive, memory-only)
-                grids = self.gridder.create_grids(work_order_path, output_dir=None)
-                
-                if not grids:
-                    raise RuntimeError(f"No grid images could be created for work order {work_order_number}")
-                
-                # Encode grids (this will also clean up PIL images)
-                output_format = self.default_settings.get("output_format", "PNG")
-                encoded_grids = self.gridder.encode_grids(grids, format=output_format)
-                
-                self.logger.info(f"Created {len(encoded_grids)} grid images for work order {work_order_number}")
-                
-                # Additional cleanup: explicitly delete grids list to free memory
-                del grids
-                
-                return work_order_number, (work_order, encoded_grids)
-                
+                if self.targeted_mode:
+                    from src.tools.image_loader import ImageLoader
+                    encoded_by_sor: Dict[str, list] = {}
+                    folder_cache: Dict[Path, list] = {}
+
+                    def load_folder(folder_path: Path) -> list:
+                        if folder_path in folder_cache:
+                            return folder_cache[folder_path]
+                        loader = ImageLoader(str(folder_path))
+                        images = loader.load_images_to_memory(single=False)
+                        if not images:
+                            return []
+                        # Targeted mode: prefer JPEG for photo content to reduce size and speed up
+                        encoded = loader.encode_images(images, format="JPEG")
+                        # Inject media_type for Bedrock
+                        for item in encoded:
+                            item["media_type"] = "image/jpeg"
+                        folder_cache[folder_path] = encoded
+                        return encoded
+
+                    wo_path = Path(work_order_path)
+                    for sor_type in self.get_enabled_sor_types():
+                        folder_names = self.folder_mapping.get(sor_type, [])
+                        selected_imgs: list = []
+                        for fname in folder_names:
+                            candidate = wo_path / fname
+                            if candidate.exists() and candidate.is_dir():
+                                imgs = load_folder(candidate)
+                                if imgs:
+                                    selected_imgs.extend(imgs)
+                        # Fallback to default folder if nothing found
+                        if not selected_imgs:
+                            fallback = wo_path / self.default_folder_name
+                            if fallback.exists() and fallback.is_dir():
+                                selected_imgs = load_folder(fallback)
+                        # Optionally cap images per SOR for performance (keep chronological order)
+                        if self.max_images_per_sor and len(selected_imgs) > self.max_images_per_sor:
+                            selected_imgs = selected_imgs[:self.max_images_per_sor]
+                        encoded_by_sor[sor_type] = selected_imgs or []
+
+                    return work_order_number, (work_order, encoded_by_sor)
+                else:
+                    # Legacy grid path
+                    self.logger.info(f"Creating grids for work order {work_order_number}")
+                    grids = self.gridder.create_grids(work_order_path, output_dir=None)
+                    if not grids:
+                        raise RuntimeError(f"No grid images could be created for work order {work_order_number}")
+                    output_format = self.default_settings.get("output_format", "PNG")
+                    encoded_grids = self.gridder.encode_grids(grids, format=output_format)
+                    del grids
+                    return work_order_number, (work_order, {"__grids__": encoded_grids})
             except Exception as e:
-                self.logger.error(f"Failed to create grids for work order {work_order_number}: {e}")
+                self.logger.error(f"Failed to prepare images for work order {work_order_number}: {e}")
                 return work_order_number, e
 
         async def process_work_order_parallel(work_order: Dict[str, Any]) -> tuple[str, Any]:
@@ -349,19 +395,19 @@ class UnifiedSORProcessor:
                 # Run grid creation in thread pool for true parallelism
                 loop = asyncio.get_event_loop()
                 with concurrent.futures.ThreadPoolExecutor() as executor:
-                    grid_result_number, grid_result = await loop.run_in_executor(
-                        executor, create_grids_sync, work_order
+                    prepared_number, prepared_result = await loop.run_in_executor(
+                        executor, prepare_images_sync, work_order
                     )
                 
-                if isinstance(grid_result, Exception):
-                    raise grid_result
+                if isinstance(prepared_result, Exception):
+                    raise prepared_result
                 
-                work_order, encoded_grids = grid_result
+                work_order, prepared_images = prepared_result
                 
                 # Process SOR types without work order level semaphore
                 # Individual SOR processing will be controlled by global semaphore
                 result = await self._process_sor_types_for_work_order(
-                    work_order, sor_types, encoded_grids
+                    work_order, sor_types, prepared_images
                 )
                 return work_order_number, result
                     
@@ -393,8 +439,8 @@ class UnifiedSORProcessor:
         return results
     
     async def _process_sor_types_for_work_order(self, work_order: Dict[str, Any], 
-                                              sor_types: List[str], 
-                                              encoded_grids: List[Dict[str, str]]) -> Dict[str, Any]:
+                                               sor_types: List[str], 
+                                               prepared_images: Any) -> Dict[str, Any]:
         """Process SOR types for a single work order with pre-created grids."""
         work_order_number = work_order["work_order_number"]
         work_order_path = work_order["path"]
@@ -426,7 +472,13 @@ class UnifiedSORProcessor:
                             # Small delay to prevent API rate limiting on first attempt
                             await asyncio.sleep(api_delay)
                         
-                        result = await self._analyze_sor_type(sor_type, work_order_path, encoded_grids, work_order)
+                        # Choose images per mode
+                        if self.targeted_mode:
+                            images = prepared_images.get(sor_type, [])
+                        else:
+                            images = prepared_images.get("__grids__", [])
+
+                        result = await self._analyze_sor_type(sor_type, work_order_path, images, work_order)
                         self.logger.info(f"Completed {sor_type} analysis for work order {work_order_number}")
                         return sor_type, result
                         

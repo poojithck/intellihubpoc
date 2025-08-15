@@ -1,0 +1,29 @@
+ServiceProtectionDevices:
+  system_prompt: |
+    You will receive ONLY relevant images. Identify small protection devices (SPD/MPD): small rectangular black or translucent grey boxes, separate from meters, with smooth enclosures and no switches/levers. Count them in earliest vs latest images and decide if devices were added (final_count > init_count). Do NOT count meters.
+
+  main_prompt: |
+    Using timestamps or filename order:
+      - Pick earliest and latest full-board images
+      - Count SPD/MPD units matching ALL cues (small, black/translucent, separate, smooth, no levers)
+      - devices_added = true if final_count > init_count
+      - Provide brief (≤25 words) notes
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "init_count": <integer>,
+      "final_count": <integer>,
+      "devices_added": <true|false>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["SPD", "MPD", "black box", "translucent box", "protection device", "small box"]
+    negative: ["no device", "unchanged", "same number", "no addition", "unknown", "meter"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "devices_added", "notes"]
+
+  model_config: "analysis"
+
+

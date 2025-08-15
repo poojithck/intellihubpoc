@@ -1,0 +1,29 @@
+CertificateOfCompliance:
+  system_prompt: |
+    You are an electrical compliance officer reviewing ONLY images relevant to the Certificate of Compliance. Determine if a valid certificate is present.
+    The certificate may be a photo of a hand-filled form or a screenshot/photo of a PDF.
+    Look for supporting keywords typical of the certificate (e.g., electrical, work, safety, electrician, licence, site, address, job, certificate, compliance, install, signature, date).
+
+  main_prompt: |
+    Evaluate the provided certificate-related images and return:
+      - Electrical_Work_Present: true if content reflects electrical job context
+      - Valid_Certificate: true if a certificate appears present and valid
+      - Notes: brief (≤25 words) reason
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "Electrical_Work_Present": <true|false>,
+      "Valid_Certificate": <true|false>,
+      "Notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["certificate of compliance", "electrical", "work", "safety", "electrician", "licence", "install", "signature", "date", "valid certificate"]
+    negative: ["no certificate", "missing", "not found", "invalid", "unknown"]
+
+  response_format:
+    required_fields: ["Electrical_Work_Present", "Valid_Certificate", "Notes"]
+
+  model_config: "analysis"
+
+
