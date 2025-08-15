@@ -148,7 +148,7 @@ sor_analysis:
     test_mode: false
     output_format: "both"  # csv, excel, both
     save_json: true
-    max_work_orders: 10  # cap default processing to 10 work orders
+    max_work_orders: null  # cap default processing to 10 work orders
     parent_folder: null    # null = use default_paths.batch_parent_folder
     output_path: null      # null = use default_paths.batch_output_folder with timestamp
     sor_list: null         # null = use all enabled
