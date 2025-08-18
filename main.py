@@ -49,11 +49,58 @@ async def main():
         parent_folder = sor_config.get("sor_analysis", {}).get("default_paths", {}).get("batch_parent_folder", "artefacts")
         max_work_orders = batch_config.get("max_work_orders", 10)
         batch_size = batch_config.get("batch_size", 5)
+
+        # Resolve output folder for this batch early, and attach file logger
+        batch_output_folder = sor_config.get("sor_analysis", {}).get("default_paths", {}).get("batch_output_folder", "outputs/batch_results")
+        from datetime import datetime
+        from pathlib import Path
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_path = f"{batch_output_folder}_{timestamp}"
+        try:
+            output_dir = Path(output_path)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            log_file = output_dir / "log.txt"
+            file_handler = logging.FileHandler(log_file)
+            file_handler.setLevel(logging.getLogger().level)
+            formatter = logging.Formatter(config_manager.get_logging_config().get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+            file_handler.setFormatter(formatter)
+            logging.getLogger().addHandler(file_handler)
+            logger.info(f"Attached batch log file: {log_file}")
+        except Exception as e:
+            logger.error(f"Failed to attach batch file logger: {e}")
         
-        logger.info(f"Starting batch processing with {client_type.upper()} client")
-        logger.info(f"Parent folder: {parent_folder}")
-        logger.info(f"Max work orders: {max_work_orders}")
-        logger.info(f"Batch size: {batch_size}")
+        # Log comprehensive batch metadata
+        logger.info("=" * 80)
+        logger.info("BATCH PROCESSING METADATA")
+        logger.info("=" * 80)
+        logger.info(f"Client Type: {client_type.upper()}")
+        logger.info(f"Parent Folder: {parent_folder}")
+        logger.info(f"Max Work Orders: {max_work_orders}")
+        logger.info(f"Batch Size: {batch_size}")
+        
+        # Log prompt configuration details
+        prompt_subdir = sor_config.get("sor_analysis", {}).get("prompt_subdir", "prompts")
+        prompt_version = sor_config.get("sor_analysis", {}).get("prompt_version", None)
+        prompt_path = f"{prompt_subdir}/{prompt_version}" if prompt_version else prompt_subdir
+        logger.info(f"Prompt Configuration: {prompt_path}")
+        
+        # Log model configuration details
+        if client_type == "azure":
+            azure_config = config_manager.get_azure_openai_config()
+            deployment_name = azure_config.get("deployment_name", "gpt-4o")
+            logger.info(f"Azure Model: {deployment_name}")
+            logger.info(f"Azure Endpoint: {azure_config.get('endpoint', 'Not specified')}")
+        else:
+            aws_config = config_manager.get_aws_config()
+            model_id = aws_config.get("bedrock", {}).get("default_model", "anthropic.claude-3-5-sonnet-20241022-v2:0")
+            region = aws_config.get("aws", {}).get("region", "Not specified")
+            logger.info(f"AWS Bedrock Model: {model_id}")
+            logger.info(f"AWS Region: {region}")
+        
+        # Log enabled SOR types
+        enabled_sors = processor.get_enabled_sor_types()
+        logger.info(f"Enabled SOR Types: {', '.join(enabled_sors)}")
+        logger.info("=" * 80)
         
         # Process work orders
         results = await processor.process_work_orders_batch(
@@ -62,15 +109,12 @@ async def main():
             batch_size=batch_size
         )
         
-        # Generate results table using configured batch output folder
-        batch_output_folder = sor_config.get("sor_analysis", {}).get("default_paths", {}).get("batch_output_folder", "outputs/batch_results")
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_path = f"{batch_output_folder}_{timestamp}"
-        table_path = processor.generate_results_table(results, output_path)
+        # Save results (CSV + summary.json) into the batch folder
+        saved_files = processor.save_results(results, output_path)
         
         logger.info(f"Processing completed successfully!")
-        logger.info(f"Results table generated at: {table_path}")
+        for ft, fp in saved_files.items():
+            logger.info(f"Saved {ft}: {fp}")
         # Handle both Azure (batch_summary) and Bedrock (summary) return structures
         summary_key = 'batch_summary' if 'batch_summary' in results else 'summary'
         logger.info(f"Total work orders processed: {results[summary_key]['total_work_orders']}")

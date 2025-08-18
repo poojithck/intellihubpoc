@@ -560,6 +560,43 @@ class AzureUnifiedSORProcessor:
             "sor_results": results
         }
     
+    def _get_batch_metadata(self) -> Dict[str, Any]:
+        """Get comprehensive batch metadata including prompt and model configuration."""
+        from datetime import datetime
+        
+        # Get Azure configuration
+        azure_config = self.config_manager.get_azure_openai_config()
+        
+        # Build prompt path
+        prompt_path = self.prompts_subdir if self.prompts_subdir else "prompts"
+        if self.prompts_version:
+            prompt_path += f"/{self.prompts_version}"
+        
+        return {
+            "client_type": "azure_openai",
+            "model_configuration": {
+                "deployment_name": azure_config.get("deployment_name", "gpt-4o"),
+                "endpoint": azure_config.get("endpoint", "Not specified"),
+                "api_version": azure_config.get("api_version", "2024-02-01"),
+                "max_tokens": azure_config.get("max_tokens", 4000),
+                "temperature": azure_config.get("temperature", 0.1)
+            },
+            "prompt_configuration": {
+                "prompt_path": prompt_path,
+                "prompt_subdir": self.prompts_subdir,
+                "prompt_version": self.prompts_version,
+                "enabled_sor_types": self.get_enabled_sor_types()
+            },
+            "processing_configuration": {
+                "targeted_mode": self.targeted_mode,
+                "max_images_per_sor": self.max_images_per_sor,
+                "max_concurrent_work_orders": self.batch_config.get("max_concurrent_work_orders", 8),
+                "max_concurrent_sor_types": self.batch_config.get("max_concurrent_sor_types", 8),
+                "batch_size": self.batch_config.get("batch_size", 5)
+            },
+            "metadata_generated_at": datetime.now().isoformat()
+        }
+    
     def _create_batch_summary(self, work_orders: List[Dict[str, Any]], 
                             results: Dict[str, Any], sor_types: List[str]) -> Dict[str, Any]:
         """Create comprehensive batch summary."""
@@ -616,6 +653,9 @@ class AzureUnifiedSORProcessor:
                 "error": error_count
             }
         
+        # Add batch configuration metadata
+        batch_metadata = self._get_batch_metadata()
+        
         return {
             "processing_timestamp": datetime.now().isoformat(),
             "total_work_orders": total_work_orders,
@@ -631,10 +671,38 @@ class AzureUnifiedSORProcessor:
             "max_concurrent_sors_global": self.batch_config.get("max_concurrent_work_orders", 8) * self.batch_config.get("max_concurrent_sor_types", 8),
             "concurrent_work_orders": "unlimited",
             "api_rate_limit_delay": self.batch_config.get("api_rate_limit_delay", 0.05),
-            "client_type": "azure_openai"
+            "client_type": "azure_openai",
+            "batch_metadata": batch_metadata
         }
     
-    
+    def save_results(self, results: Dict[str, Any], output_path: str) -> Dict[str, str]:
+        """Save results in minimal required formats: CSV table and summary.json."""
+        output_dir = Path(output_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        saved_files = {}
+        
+        # Generate and save table (CSV only)
+        try:
+            df = self.table_generator.generate_table_from_batch_results(results)
+            if not df.empty:
+                # Save CSV
+                csv_file = self.table_generator.save_table(df, str(output_dir / "sor_results"), "csv")
+                saved_files["csv"] = csv_file
+        except Exception as e:
+            self.logger.error(f"Failed to generate CSV table: {e}")
+        
+        # Save batch summary as summary.json
+        try:
+            summary = results.get("batch_summary", {})
+            summary_file = output_dir / "summary.json"
+            with open(summary_file, 'w') as f:
+                json.dump(summary, f, indent=2)
+            saved_files["summary"] = str(summary_file)
+        except Exception as e:
+            self.logger.error(f"Failed to save summary.json: {e}")
+        
+        return saved_files
     
     def generate_results_table(self, batch_results: Dict[str, Any], output_path: Optional[str] = None) -> str:
         """Generate results table from batch results."""
@@ -920,32 +988,59 @@ if __name__ == "__main__":
     
 
     def save_results(self, results: Dict[str, Any], output_path: str) -> Dict[str, str]:
+
         """Save results in minimal required formats: CSV table and summary.json."""
+
         output_dir = Path(output_path)
+
         output_dir.mkdir(parents=True, exist_ok=True)
+
         
+
         saved_files = {}
+
         
+
         # Generate and save table (CSV only)
+
         try:
+
             df = self.table_generator.generate_table_from_batch_results(results)
+
             if not df.empty:
+
                 # Save CSV
+
                 csv_file = self.table_generator.save_table(df, str(output_dir / "sor_results"), "csv")
+
                 saved_files["csv"] = csv_file
+
         except Exception as e:
+
             self.logger.error(f"Failed to generate CSV table: {e}")
+
         
+
         # Save batch summary as summary.json
+
         try:
+
             summary = results.get("batch_summary", {})
+
             summary_file = output_dir / "summary.json"
+
             with open(summary_file, 'w') as f:
+
                 json.dump(summary, f, indent=2)
+
             saved_files["summary"] = str(summary_file)
+
         except Exception as e:
+
             self.logger.error(f"Failed to save summary.json: {e}")
+
         
+
         return saved_files
 
     

@@ -122,7 +122,7 @@ sor_analysis:
     work_order_pattern: r"(WO-[A-Z0-9]+)"  # Extract full work order numbers like WO-EAC2505021264593
     exclude_patterns: ["__pycache__", ".git", "test_grids", "sor_results", "Archive"]
     min_images_per_work_order: 1
-    max_work_orders: 10  # null = no limit (process all work orders)
+    max_work_orders: null  # null = no limit (process all work orders)
     test_max_work_orders: 5  # Default test limit when --test-mode is used
     parallel_processing: true
     max_concurrent_work_orders: 8  # Increased from 3 to 8 for better throughput

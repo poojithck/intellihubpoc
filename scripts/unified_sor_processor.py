@@ -554,6 +554,42 @@ class UnifiedSORProcessor:
             "sor_results": results
         }
     
+    def _get_batch_metadata(self) -> Dict[str, Any]:
+        """Get comprehensive batch metadata including prompt and model configuration."""
+        from datetime import datetime
+        
+        # Get AWS/Bedrock configuration
+        aws_config = self.config_manager.get_aws_config()
+        
+        # Build prompt path
+        prompt_path = self.prompts_subdir if self.prompts_subdir else "prompts"
+        if self.prompts_version:
+            prompt_path += f"/{self.prompts_version}"
+        
+        return {
+            "client_type": "aws_bedrock",
+            "model_configuration": {
+                "model_id": aws_config.get("bedrock", {}).get("default_model", "anthropic.claude-3-5-sonnet-20241022-v2:0"),
+                "region": aws_config.get("aws", {}).get("region", "us-east-1"),
+                "timeout": aws_config.get("bedrock", {}).get("timeout", 30),
+                "retry_attempts": aws_config.get("bedrock", {}).get("retry_attempts", 3)
+            },
+            "prompt_configuration": {
+                "prompt_path": prompt_path,
+                "prompt_subdir": self.prompts_subdir,
+                "prompt_version": self.prompts_version,
+                "enabled_sor_types": self.get_enabled_sor_types()
+            },
+            "processing_configuration": {
+                "targeted_mode": self.targeted_mode,
+                "max_images_per_sor": self.max_images_per_sor,
+                "max_concurrent_work_orders": self.batch_config.get("max_concurrent_work_orders", 8),
+                "max_concurrent_sor_types": self.batch_config.get("max_concurrent_sor_types", 8),
+                "batch_size": self.batch_config.get("batch_size", 5)
+            },
+            "metadata_generated_at": datetime.now().isoformat()
+        }
+    
     def _create_batch_summary(self, work_orders: List[Dict[str, Any]], 
                             results: Dict[str, Any], sor_types: List[str]) -> Dict[str, Any]:
         """Create comprehensive batch summary."""
@@ -610,6 +646,9 @@ class UnifiedSORProcessor:
                 "error": error_count
             }
         
+        # Add batch configuration metadata
+        batch_metadata = self._get_batch_metadata()
+        
         return {
             "processing_timestamp": datetime.now().isoformat(),
             "total_work_orders": total_work_orders,
@@ -624,7 +663,8 @@ class UnifiedSORProcessor:
             "processing_mode": "parallel_sors_across_work_orders",
             "max_concurrent_sors_global": self.batch_config.get("max_concurrent_work_orders", 8) * self.batch_config.get("max_concurrent_sor_types", 8),
             "concurrent_work_orders": "unlimited",
-            "api_rate_limit_delay": self.batch_config.get("api_rate_limit_delay", 0.05)
+            "api_rate_limit_delay": self.batch_config.get("api_rate_limit_delay", 0.05),
+            "batch_metadata": batch_metadata
         }
     
     def save_results(self, results: Dict[str, Any], output_path: str) -> Dict[str, str]:
