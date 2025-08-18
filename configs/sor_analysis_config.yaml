@@ -9,8 +9,9 @@ sor_analysis:
   default_settings:
     output_format: "PNG"
     model_config: "analysis"
-  # Use targeted prompts from nested folder
+  # Use targeted prompts from nested folder with versioning
   prompt_subdir: "prompts/Targeted-Prompts"
+  prompt_version: "v1"
     
   # Define available SOR types and their configurations
   sor_types:

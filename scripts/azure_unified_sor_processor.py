@@ -48,8 +48,9 @@ class AzureUnifiedSORProcessor:
         self.batch_config = self.sor_config.get("sor_analysis", {}).get("batch_processing", {})
         self.default_settings = self.sor_config.get("sor_analysis", {}).get("default_settings", {})
         
-        # Determine prompts subdirectory (allows switching to Targeted-Prompts)
+        # Determine prompts subdirectory and version (allows switching to Targeted-Prompts/vX)
         self.prompts_subdir = self.sor_config.get("sor_analysis", {}).get("prompt_subdir", None)
+        self.prompts_version = self.sor_config.get("sor_analysis", {}).get("prompt_version", None)
 
         # Pre-load all prompt configs to avoid concurrent loading during processing
         self.prompt_configs = {}
@@ -62,7 +63,12 @@ class AzureUnifiedSORProcessor:
         )
         
         for sor_type in self.get_enabled_sor_types():
-            self.prompt_configs[sor_type] = config_manager.get_prompt_config(sor_type, prompts_subdir=self.prompts_subdir)
+            self.prompt_configs[sor_type] = config_manager.get_prompt_config(
+                sor_type,
+                prompts_subdir=self.prompts_subdir,
+                prompts_version=self.prompts_version,
+            )
+        self.logger.info(f"Prompt directory: {self.prompts_subdir}{'/' + self.prompts_version if self.prompts_version else ''}")
         
         self.logger.info(f"Pre-loaded {len(self.prompt_configs)} prompt configurations")
 
@@ -171,6 +177,20 @@ class AzureUnifiedSORProcessor:
         system_prompt = (prompt_config.get("system_prompt") or "").strip()
         main_prompt = (prompt_config.get("main_prompt") or "").strip()
 
+        # Enhanced debug logging for accuracy troubleshooting
+        self.logger.info(f"SOR Analysis Debug - {sor_type} for WO {work_order_info['work_order_number']}")
+        self.logger.info(f"   System prompt length: {len(system_prompt)} chars")
+        self.logger.info(f"   Main prompt length: {len(main_prompt)} chars")
+        self.logger.info(f"   Images to process: {len(images)}")
+        
+        # Log image details for verification
+        for i, img in enumerate(images):
+            img_name = img.get('name', f'image_{i}')
+            img_size = len(img.get('data', '')) if img.get('data') else 0
+            img_size_mb = img_size / (1024 * 1024)
+            timestamp = img.get('timestamp', 'No timestamp')
+            self.logger.info(f"   Image {i+1}: {img_name} ({img_size_mb:.2f}MB) - {timestamp}")
+        
         # Debug preview to verify correct prompt dispatch per SOR
         try:
             preview = (main_prompt[:300] + ("…" if len(main_prompt) > 300 else ""))
@@ -185,11 +205,14 @@ class AzureUnifiedSORProcessor:
         azure_config = self.config_manager.get_azure_openai_config()
         per_image_mode = azure_config.get("processing", {}).get("per_image_mode", False)
         
+        self.logger.info(f"   Processing mode: {'per-image (Bedrock-style)' if per_image_mode else 'multi-image (speed)'}")
+        
         # Run synchronous Azure OpenAI call in thread pool for true async concurrency
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as executor:
             if per_image_mode:
                 # Use per-image processing for higher accuracy (Bedrock-style)
+                self.logger.info(f"   Using per-image processing for maximum accuracy")
                 response = await loop.run_in_executor(
                     executor,
                     lambda: self.azure_client.invoke_model_per_image(
@@ -202,6 +225,7 @@ class AzureUnifiedSORProcessor:
                 )
             else:
                 # Use multi-image processing for speed (default)
+                self.logger.info(f"   Using multi-image processing for speed")
                 response = await loop.run_in_executor(
                     executor,
                     lambda: self.azure_client.invoke_model_multi_image(
@@ -213,8 +237,15 @@ class AzureUnifiedSORProcessor:
                     )
                 )
         
-        # Parse response using shared client
+        # Log response details for accuracy verification
         response_text = response.get("text", "")
+        input_tokens = response.get("input_tokens", 0)
+        output_tokens = response.get("output_tokens", 0)
+        total_cost = response.get("total_cost", 0)
+        
+        self.logger.info(f"   Response: {len(response_text)} chars, {input_tokens} input tokens, {output_tokens} output tokens, ${total_cost:.4f}")
+        
+        # Parse response using shared client
         response_text = self.azure_client.repair_json_response(response_text)
         
         # Create simple fallback parser for this SOR type
@@ -603,39 +634,7 @@ class AzureUnifiedSORProcessor:
             "client_type": "azure_openai"
         }
     
-    def save_results(self, results: Dict[str, Any], output_path: str) -> Dict[str, str]:
-        """Save results in multiple formats."""
-        output_dir = Path(output_path)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
-        saved_files = {}
-        
-        # Save detailed JSON results
-        json_file = output_dir / "batch_results.json"
-        with open(json_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        saved_files["json"] = str(json_file)
-        
-        # Generate and save table
-        try:
-            df = self.table_generator.generate_table_from_batch_results(results)
-            if not df.empty:
-                # Save CSV
-                csv_file = self.table_generator.save_table(df, str(output_dir / "sor_results"), "csv")
-                saved_files["csv"] = csv_file
-                
-                # Save Excel
-                excel_file = self.table_generator.save_table(df, str(output_dir / "sor_results"), "excel")
-                saved_files["excel"] = excel_file
-                
-                # Save summary report
-                summary = self.table_generator.generate_summary_statistics(df)
-                summary_file = self.table_generator.save_summary_report(summary, str(output_dir / "summary"))
-                saved_files["summary"] = summary_file
-        except Exception as e:
-            self.logger.error(f"Failed to generate tables: {e}")
-        
-        return saved_files
+    
     
     def generate_results_table(self, batch_results: Dict[str, Any], output_path: Optional[str] = None) -> str:
         """Generate results table from batch results."""
@@ -669,6 +668,40 @@ async def main():
     # Resolve configuration from CLI args and config defaults
     config = cli_config.resolve_config(args)
     
+    # Attach file handler for batch logs
+    try:
+        output_dir = Path(config["output_path"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        log_file = output_dir / "log.txt"
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.getLogger().level)
+        formatter = logging.Formatter(config_manager.get_logging_config().get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        file_handler.setFormatter(formatter)
+        logging.getLogger().addHandler(file_handler)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to attach batch file logger: {e}")
+    
+    # Apply prompt directory/version overrides from CLI if provided
+    try:
+        if config.get("prompt_subdir") or config.get("prompt_version"):
+            if config.get("prompt_subdir"):
+                processor.prompts_subdir = config.get("prompt_subdir")
+            if config.get("prompt_version"):
+                processor.prompts_version = config.get("prompt_version")
+            # Rebuild prompt configs with overrides
+            processor.prompt_configs = {}
+            for sor_type in processor.get_enabled_sor_types():
+                processor.prompt_configs[sor_type] = processor.config_manager.get_prompt_config(
+                    sor_type,
+                    prompts_subdir=processor.prompts_subdir,
+                    prompts_version=processor.prompts_version,
+                )
+            logging.getLogger(__name__).info(
+                f"Prompt directory override in effect: {processor.prompts_subdir}{'/' + processor.prompts_version if processor.prompts_version else ''}"
+            )
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to apply prompt overrides: {e}")
+
     # Handle list-sors mode
     if config["list_sors"]:
         enabled_sors = processor.get_enabled_sor_types()
@@ -735,3 +768,382 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+    
+
+    def _create_batch_summary(self, work_orders: List[Dict[str, Any]], 
+
+                            results: Dict[str, Any], sor_types: List[str]) -> Dict[str, Any]:
+
+        """Create comprehensive batch summary."""
+
+        total_work_orders = len(work_orders)
+
+        successful_work_orders = len([r for r in results.values() 
+
+                                    if "error" not in r.get("summary", {})])
+
+        failed_work_orders = total_work_orders - successful_work_orders
+
+        
+
+        total_images = sum(wo["image_count"] for wo in work_orders)
+
+        total_cost = sum(r.get("summary", {}).get("total_cost", 0) for r in results.values())
+
+        total_input_tokens = sum(r.get("summary", {}).get("total_input_tokens", 0) for r in results.values())
+
+        total_output_tokens = sum(r.get("summary", {}).get("total_output_tokens", 0) for r in results.values())
+
+        
+
+        # SOR-specific statistics using correct boolean field names from config
+
+        sor_statistics = {}
+
+        boolean_field_config = self.sor_config.get("sor_analysis", {}).get("table_generation", {}).get("boolean_fields", {})
+
+        
+
+        for sor_type in sor_types:
+
+            pass_count = 0
+
+            fail_count = 0
+
+            error_count = 0
+
+            
+
+            # Get the correct boolean field name for this SOR type
+
+            boolean_field = boolean_field_config.get(sor_type)
+
+            
+
+            for work_order_result in results.values():
+
+                sor_result = work_order_result.get("sor_results", {}).get(sor_type, {})
+
+                if "error" in sor_result:
+
+                    error_count += 1
+
+                elif boolean_field and sor_result.get(boolean_field):
+
+                    # Check if the boolean field exists and is truthy
+
+                    boolean_value = sor_result.get(boolean_field)
+
+                    if isinstance(boolean_value, bool):
+
+                        if boolean_value:
+
+                            pass_count += 1
+
+                        else:
+
+                            fail_count += 1
+
+                    elif isinstance(boolean_value, str):
+
+                        # Handle string boolean values like "PASS", "FAIL", "True", "False"
+
+                        if boolean_value.upper() in ["PASS", "TRUE", "YES", "1"]:
+
+                            pass_count += 1
+
+                        else:
+
+                            fail_count += 1
+
+                    else:
+
+                        # If boolean field exists but isn't recognizable, count as fail
+
+                        fail_count += 1
+
+                else:
+
+                    # If no boolean field configured or field not found, count as fail
+
+                    fail_count += 1
+
+            
+
+            sor_statistics[sor_type] = {
+
+                "pass": pass_count,
+
+                "fail": fail_count,
+
+                "error": error_count
+
+            }
+
+        
+
+        return {
+
+            "processing_timestamp": datetime.now().isoformat(),
+
+            "total_work_orders": total_work_orders,
+
+            "successful_work_orders": successful_work_orders,
+
+            "failed_work_orders": failed_work_orders,
+
+            "total_images": total_images,
+
+            "sor_types_analyzed": sor_types,
+
+            "total_cost": total_cost,
+
+            "total_input_tokens": total_input_tokens,
+
+            "total_output_tokens": total_output_tokens,
+
+            "sor_statistics": sor_statistics,
+
+            "processing_mode": "parallel_sors_across_work_orders",
+
+            "max_concurrent_sors_global": self.batch_config.get("max_concurrent_work_orders", 8) * self.batch_config.get("max_concurrent_sor_types", 8),
+
+            "concurrent_work_orders": "unlimited",
+
+            "api_rate_limit_delay": self.batch_config.get("api_rate_limit_delay", 0.05),
+
+            "client_type": "azure_openai"
+
+        }
+
+    
+
+    def save_results(self, results: Dict[str, Any], output_path: str) -> Dict[str, str]:
+        """Save results in minimal required formats: CSV table and summary.json."""
+        output_dir = Path(output_path)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        saved_files = {}
+        
+        # Generate and save table (CSV only)
+        try:
+            df = self.table_generator.generate_table_from_batch_results(results)
+            if not df.empty:
+                # Save CSV
+                csv_file = self.table_generator.save_table(df, str(output_dir / "sor_results"), "csv")
+                saved_files["csv"] = csv_file
+        except Exception as e:
+            self.logger.error(f"Failed to generate CSV table: {e}")
+        
+        # Save batch summary as summary.json
+        try:
+            summary = results.get("batch_summary", {})
+            summary_file = output_dir / "summary.json"
+            with open(summary_file, 'w') as f:
+                json.dump(summary, f, indent=2)
+            saved_files["summary"] = str(summary_file)
+        except Exception as e:
+            self.logger.error(f"Failed to save summary.json: {e}")
+        
+        return saved_files
+
+    
+
+    def generate_results_table(self, batch_results: Dict[str, Any], output_path: Optional[str] = None) -> str:
+
+        """Generate results table from batch results."""
+
+        try:
+
+            df = self.table_generator.generate_table_from_batch_results(batch_results)
+
+            if not df.empty:
+
+                # Save CSV
+
+                csv_file = self.table_generator.save_table(df, str(output_path or "outputs/sor_results"), "csv")
+
+                return csv_file
+
+            else:
+
+                return "No results to generate table from"
+
+        except Exception as e:
+
+            self.logger.error(f"Failed to generate results table: {e}")
+
+            return f"Error generating table: {e}"
+
+
+
+
+
+async def main():
+
+    """Main function with CLI configuration and processing."""
+
+    # Initialize configuration
+
+    config_manager = ConfigManager()
+
+    setup_logging(config_manager)
+
+    
+
+    # Set up CLI configuration
+
+    cli_config = CLIConfig(config_manager)
+
+    parser = cli_config.create_parser()
+
+    args = parser.parse_args()
+
+    
+
+    # Initialize processor
+
+    processor = AzureUnifiedSORProcessor(config_manager)
+
+    
+
+    # Resolve configuration from CLI args and config defaults
+
+    config = cli_config.resolve_config(args)
+
+    
+
+    # Handle list-sors mode
+
+    if config["list_sors"]:
+
+        enabled_sors = processor.get_enabled_sor_types()
+
+        print("Available SOR types:")
+
+        for sor_type in enabled_sors:
+
+            sor_config = processor.sor_config.get("sor_analysis", {}).get("sor_types", {}).get(sor_type, {})
+
+            print(f"  {sor_type}: {sor_config.get('description', 'No description')}")
+
+        return
+
+    
+
+    try:
+
+        # Validate SOR types if specified
+
+        if config["sor_types"]:
+
+            config["sor_types"] = processor.validate_sor_types(config["sor_types"])
+
+            if not config["sor_types"]:
+
+                print("Error: No valid SOR types specified")
+
+                sys.exit(1)
+
+        
+
+        # Print processing information
+
+        cli_config.print_processing_info(config)
+
+        
+
+        start_time = time.time()
+
+        
+
+        batch_results = await processor.process_work_orders_batch(
+
+            config["parent_folder"],
+
+            sor_types=config["sor_types"],
+
+            max_work_orders=config["max_work_orders"],
+
+            batch_size=config["batch_size"]
+
+        )
+
+        
+
+        end_time = time.time()
+
+        processing_time = end_time - start_time
+
+        
+
+        # Save results
+
+        saved_files = processor.save_results(batch_results, config["output_path"])
+
+        
+
+        # Print summary
+
+        summary = batch_results["batch_summary"]
+
+        print("\n" + "="*60)
+
+        print("UNIFIED SOR PROCESSING SUMMARY (AZURE)")
+
+        print("="*60)
+
+        print(f"Total work orders processed: {summary['total_work_orders']}")
+
+        print(f"Successful work orders: {summary['successful_work_orders']}")
+
+        print(f"Failed work orders: {summary['failed_work_orders']}")
+
+        print(f"Total images processed: {summary['total_images']}")
+
+        print(f"Total cost: ${summary['total_cost']:.4f}")
+
+        print(f"Total tokens: {summary['total_input_tokens']} input, {summary['total_output_tokens']} output")
+
+        print(f"Processing time: {processing_time:.2f} seconds ({processing_time/60:.2f} minutes)")
+
+        print(f"Average time per work order: {processing_time/summary['total_work_orders']:.2f} seconds")
+
+        
+
+        if 'sor_statistics' in summary:
+
+            print("\nSOR Results Summary:")
+
+            for sor_type, stats in summary['sor_statistics'].items():
+
+                print(f"  {sor_type}: {stats['pass']} PASS, {stats['fail']} FAIL, {stats['error']} ERROR")
+
+        
+
+        print(f"\nResults saved to: {config['output_path']}")
+
+        for file_type, file_path in saved_files.items():
+
+            print(f"  {file_type.upper()}: {file_path}")
+
+        print("="*60)
+
+        
+
+    except Exception as e:
+
+        logging.error(f"Azure Unified SOR processing failed: {e}")
+
+        raise
+
+
+
+
+
+if __name__ == "__main__":
+
+    asyncio.run(main())
+
+

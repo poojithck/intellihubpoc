@@ -156,7 +156,12 @@ class ConfigManager:
         
         return azure_models_config["models"][model_name]
     
-    def get_prompt_config(self, analysis_type: str, prompts_subdir: Optional[str] = None) -> Dict[str, Any]:
+    def get_prompt_config(
+        self,
+        analysis_type: str,
+        prompts_subdir: Optional[str] = None,
+        prompts_version: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """
         Get prompt configuration for a specific analysis type.
         
@@ -169,22 +174,41 @@ class ConfigManager:
         Returns:
             Prompt configuration dictionary
         """
-        subdir = prompts_subdir or "prompts"
-        try:
-            config_data = self.load_config(analysis_type, subdir)
-        except FileNotFoundError:
-            # Fallback to default prompts directory if targeted/nested not found
-            if subdir != "prompts":
-                config_data = self.load_config(analysis_type, "prompts")
-            else:
-                raise
+        # Build resolution order with optional versioned subdir
+        resolution_subdirs = []
+        if prompts_subdir and prompts_version:
+            resolution_subdirs.append(f"{prompts_subdir}/{prompts_version}")
+        if prompts_subdir:
+            resolution_subdirs.append(prompts_subdir)
+        # Default prompts directory
+        resolution_subdirs.append("prompts")
+        # Final fallback to legacy prompts if present
+        resolution_subdirs.append("prompts/legacy-prompts")
+
+        last_error: Optional[Exception] = None
+        config_data = None
+        for subdir in resolution_subdirs:
+            try:
+                config_data = self.load_config(analysis_type, subdir)
+                # Successfully loaded; stop searching
+                break
+            except FileNotFoundError as e:
+                last_error = e
+                continue
+        if config_data is None:
+            # Re-raise the last error if nothing was found
+            if last_error:
+                raise last_error
+            raise FileNotFoundError(f"Prompt configuration file not found for {analysis_type}")
         
         if analysis_type not in config_data:
-            # If structure differs, attempt fallback once more to default
-            if subdir != "prompts":
+            # If structure differs, attempt fallback to default prompts once more
+            try:
                 fallback_data = self.load_config(analysis_type, "prompts")
                 if analysis_type in fallback_data:
                     return fallback_data[analysis_type]
+            except Exception:
+                pass
             raise ValueError(f"Prompt configuration not found: {analysis_type}")
         
         return config_data[analysis_type]

@@ -5,6 +5,12 @@ app:
 logging:
   level: "INFO"
   format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  # Specific logger level controls to reduce verbose output
+  logger_levels:
+    httpx: "WARNING"  # Reduce HTTP request logging
+    src.tools.image_loader: "INFO"  # Keep image processing info but reduce debug
+    openai: "WARNING"  # Reduce OpenAI client logging
+    azure: "WARNING"  # Reduce Azure client logging
   
 image_processing:
   default_resize:

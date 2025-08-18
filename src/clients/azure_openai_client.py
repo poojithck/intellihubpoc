@@ -126,6 +126,14 @@ class AzureOpenAIClient:
         if not images:
             raise ValueError("At least one image must be provided")
         
+        # Enhanced debug logging for accuracy verification
+        logging.info(f"Azure API Debug - Multi-image request")
+        logging.info(f"   Prompt: {len(prompt)} chars")
+        logging.info(f"   Images: {len(images)}")
+        logging.info(f"   Max tokens: {max_tokens}, Temperature: {temperature}")
+        if system_prompt:
+            logging.info(f"   System prompt: {len(system_prompt)} chars")
+        
         # Build content array with all images and text
         content = []
         
@@ -135,6 +143,7 @@ class AzureOpenAIClient:
             # For single images, integrate timestamp into prompt like Bedrock
             timestamp = images[0]['timestamp']
             prompt_text = f"Image capture timestamp: {timestamp}. {prompt_text}"
+            logging.info(f"   Integrated timestamp: {timestamp}")
         
         # Add text prompt first
         content.append({
@@ -156,8 +165,10 @@ class AzureOpenAIClient:
             try:
                 encoded_size = len(image_data.encode('utf-8'))
                 encoded_mb = encoded_size / (1024 * 1024)
+                logging.info(f"   Image {i+1}: {name} - {encoded_mb:.2f}MB")
+                
                 if encoded_size > 20 * 1024 * 1024:  # Azure OpenAI 20MB limit
-                    logging.error(f"💥 IMAGE SIZE LIMIT EXCEEDED! 💥")
+                    logging.error(f"IMAGE SIZE LIMIT EXCEEDED!")
                     logging.error(f"OVERSIZED IMAGE DETECTED: {encoded_mb:.2f}MB ({encoded_size} bytes)")
                     logging.error(f"Image name: {name}")
                     raise ValueError(f"BLOCKED OVERSIZED IMAGE: {encoded_mb:.2f}MB ({encoded_size} bytes) from {name} - SIZE LIMIT EXCEEDED!")
@@ -180,7 +191,6 @@ class AzureOpenAIClient:
                 metadata_text = f"Image {i+1:02d} of {len(images):02d}: {name}"
                 if timestamp:
                     metadata_text += f" (captured: {timestamp})"
-                
                 content.append({
                     "type": "text", 
                     "text": metadata_text
@@ -195,12 +205,16 @@ class AzureOpenAIClient:
                 "role": "system",
                 "content": system_prompt.strip()
             })
+            logging.info(f"   Added system message: {len(system_prompt.strip())} chars")
         
         # Add user message with content
         messages.append({
             "role": "user",
             "content": content
         })
+        
+        # Log final message structure for verification
+        logging.info(f"   Final message structure: {len(messages)} messages, {len(content)} content items")
         
         # Make the API call using the official client
         response = self.client.chat.completions.create(
@@ -237,6 +251,14 @@ class AzureOpenAIClient:
         if not images:
             raise ValueError("At least one image must be provided")
         
+        # Enhanced debug logging for per-image processing
+        logging.info(f"Azure API Debug - Per-image processing (Bedrock-style)")
+        logging.info(f"   Base prompt: {len(prompt)} chars")
+        logging.info(f"   Total images: {len(images)}")
+        logging.info(f"   Max tokens: {max_tokens}, Temperature: {temperature}")
+        if system_prompt:
+            logging.info(f"   System prompt: {len(system_prompt)} chars")
+        
         results = []
         total_input_tokens = 0
         total_output_tokens = 0
@@ -246,13 +268,17 @@ class AzureOpenAIClient:
             name = image_info['name']
             timestamp = image_info.get('timestamp')
             
+            logging.info(f"   Processing image {i+1}/{len(images)}: {name}")
+            
             # Adjust prompt with timestamp like Bedrock does
             image_prompt = prompt
             if timestamp:
                 image_prompt = f"Image capture timestamp: {timestamp}. {prompt.strip()}"
+                logging.info(f"   Image {i+1} timestamp: {timestamp}")
             
             # Process single image
             try:
+                logging.info(f"   Sending image {i+1} to Azure API...")
                 response = self.invoke_model_multi_image(
                     prompt=image_prompt,
                     images=[image_info],  # Single image
@@ -260,6 +286,14 @@ class AzureOpenAIClient:
                     temperature=temperature,
                     system_prompt=system_prompt
                 )
+                
+                # Log individual response details
+                img_response_text = response.get("text", "")
+                img_input_tokens = response.get("input_tokens", 0)
+                img_output_tokens = response.get("output_tokens", 0)
+                img_cost = response.get("total_cost", 0.0)
+                
+                logging.info(f"   Image {i+1} response: {len(img_response_text)} chars, {img_input_tokens} input, {img_output_tokens} output, ${img_cost:.4f}")
                 
                 # Accumulate metrics
                 total_input_tokens += response.get("input_tokens", 0)
@@ -286,6 +320,8 @@ class AzureOpenAIClient:
             f"Image: {result['image_name']}\nResponse: {result['response']}"
             for result in results
         ])
+        
+        logging.info(f"   Combined response: {len(combined_text)} chars, total cost: ${total_cost:.4f}")
         
         return {
             "text": combined_text,

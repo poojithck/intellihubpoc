@@ -95,6 +95,16 @@ Examples:
             default=self.cli_defaults.get("save_json", True),
             help="Save detailed JSON results (default: from config)"
         )
+
+        # Prompt selection overrides
+        parser.add_argument(
+            "--prompt-subdir",
+            help="Override prompt subdirectory (e.g., prompts/Targeted-Prompts)"
+        )
+        parser.add_argument(
+            "--prompt-version",
+            help="Override prompt version folder (e.g., v1, v2)"
+        )
         
         parser.add_argument(
             "--batch-size",
@@ -143,6 +153,12 @@ Examples:
         # Determine batch size (CLI > config default)
         batch_size = (args.batch_size or 
                      self.sor_config.get("sor_analysis", {}).get("batch_processing", {}).get("batch_size", 10))
+
+        # Resolve prompt directory overrides
+        prompt_subdir = (args.prompt_subdir or 
+                         self.sor_config.get("sor_analysis", {}).get("prompt_subdir"))
+        prompt_version = (args.prompt_version or 
+                          self.sor_config.get("sor_analysis", {}).get("prompt_version"))
         
         return {
             "parent_folder": parent_folder,
@@ -153,7 +169,9 @@ Examples:
             "output_format": args.output_format,
             "save_json": args.save_json,
             "test_mode": args.test_mode or self.cli_defaults.get("test_mode", False),
-            "list_sors": args.list_sors
+            "list_sors": args.list_sors,
+            "prompt_subdir": prompt_subdir,
+            "prompt_version": prompt_version,
         }
     
     def print_processing_info(self, config: Dict[str, Any]):

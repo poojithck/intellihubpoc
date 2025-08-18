@@ -84,15 +84,21 @@ class UnifiedSORProcessor:
         self.batch_config = self.sor_config.get("sor_analysis", {}).get("batch_processing", {})
         self.default_settings = self.sor_config.get("sor_analysis", {}).get("default_settings", {})
         
-        # Determine prompts subdirectory (allows switching to Targeted-Prompts)
+        # Determine prompts subdirectory and version (allows switching to Targeted-Prompts/vX)
         self.prompts_subdir = self.sor_config.get("sor_analysis", {}).get("prompt_subdir", None)
+        self.prompts_version = self.sor_config.get("sor_analysis", {}).get("prompt_version", None)
 
         # Pre-load all prompt configs to avoid concurrent loading during processing
         self.prompt_configs = {}
         self.model_params = config_manager.get_model_params(config_type=self.default_settings.get("model_config", "analysis"))
         
         for sor_type in self.get_enabled_sor_types():
-            self.prompt_configs[sor_type] = config_manager.get_prompt_config(sor_type, prompts_subdir=self.prompts_subdir)
+            self.prompt_configs[sor_type] = config_manager.get_prompt_config(
+                sor_type,
+                prompts_subdir=self.prompts_subdir,
+                prompts_version=self.prompts_version,
+            )
+        self.logger.info(f"Prompt directory: {self.prompts_subdir}{'/' + self.prompts_version if self.prompts_version else ''}")
         
         self.logger.info(f"Pre-loaded {len(self.prompt_configs)} prompt configurations")
 
@@ -622,36 +628,31 @@ class UnifiedSORProcessor:
         }
     
     def save_results(self, results: Dict[str, Any], output_path: str) -> Dict[str, str]:
-        """Save results in multiple formats."""
+        """Save results in minimal required formats: CSV table and summary.json."""
         output_dir = Path(output_path)
         output_dir.mkdir(parents=True, exist_ok=True)
         
         saved_files = {}
         
-        # Save detailed JSON results
-        json_file = output_dir / "batch_results.json"
-        with open(json_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        saved_files["json"] = str(json_file)
-        
-        # Generate and save table
+        # Generate and save table (CSV only)
         try:
             df = self.table_generator.generate_table_from_batch_results(results)
             if not df.empty:
                 # Save CSV
                 csv_file = self.table_generator.save_table(df, str(output_dir / "sor_results"), "csv")
                 saved_files["csv"] = csv_file
-                
-                # Save Excel
-                excel_file = self.table_generator.save_table(df, str(output_dir / "sor_results"), "excel")
-                saved_files["excel"] = excel_file
-                
-                # Save summary report
-                summary = self.table_generator.generate_summary_statistics(df)
-                summary_file = self.table_generator.save_summary_report(summary, str(output_dir / "summary"))
-                saved_files["summary"] = summary_file
         except Exception as e:
-            self.logger.error(f"Failed to generate tables: {e}")
+            self.logger.error(f"Failed to generate CSV table: {e}")
+        
+        # Save batch summary as summary.json
+        try:
+            summary = results.get("batch_summary", {})
+            summary_file = output_dir / "summary.json"
+            with open(summary_file, 'w') as f:
+                json.dump(summary, f, indent=2)
+            saved_files["summary"] = str(summary_file)
+        except Exception as e:
+            self.logger.error(f"Failed to save summary.json: {e}")
         
         return saved_files
 
@@ -673,6 +674,41 @@ async def main():
     # Resolve configuration from CLI args and config defaults
     config = cli_config.resolve_config(args)
     
+    # Attach file handler for batch logs
+    try:
+        output_dir = Path(config["output_path"])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        log_file = output_dir / "log.txt"
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.getLogger().level)
+        from src.utils.cli import setup_logging as _setup_logging
+        formatter = logging.Formatter(config_manager.get_logging_config().get("format", "%(asctime)s - %(name)s - %(levelname)s - %(message)s"))
+        file_handler.setFormatter(formatter)
+        logging.getLogger().addHandler(file_handler)
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to attach batch file logger: {e}")
+    
+    # Apply prompt directory/version overrides from CLI if provided
+    try:
+        if config.get("prompt_subdir") or config.get("prompt_version"):
+            if config.get("prompt_subdir"):
+                processor.prompts_subdir = config.get("prompt_subdir")
+            if config.get("prompt_version"):
+                processor.prompts_version = config.get("prompt_version")
+            # Rebuild prompt configs with overrides
+            processor.prompt_configs = {}
+            for sor_type in processor.get_enabled_sor_types():
+                processor.prompt_configs[sor_type] = processor.config_manager.get_prompt_config(
+                    sor_type,
+                    prompts_subdir=processor.prompts_subdir,
+                    prompts_version=processor.prompts_version,
+                )
+            logging.getLogger(__name__).info(
+                f"Prompt directory override in effect: {processor.prompts_subdir}{'/' + processor.prompts_version if processor.prompts_version else ''}"
+            )
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Failed to apply prompt overrides: {e}")
+
     # Handle list-sors mode
     if config["list_sors"]:
         enabled_sors = processor.get_enabled_sor_types()
