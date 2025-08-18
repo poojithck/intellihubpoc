@@ -24,23 +24,17 @@ azure_openai:
     deployment_env_var: "AZURE_OPENAI_DEPLOYMENT"
     
   # Azure OpenAI model configuration
-  model:
-    # Model family (e.g., gpt-4o, gpt-4o-mini)
-    family: "gpt-4o-mini"
-    
-    # Default parameters
-    default_max_tokens: 1000
-    default_temperature: 0.1
+  models_config_file: "configs/models/azure_openai_config.yaml"
     
   # Pricing configuration (per 1K tokens)
   pricing:
-    gpt_4o_mini:
+    gpt-4o-mini:
       input_price_per_1k: 0.000165
       output_price_per_1k: 0.00066
-    gpt_4o:
+    gpt-4o:
       input_price_per_1k: 0.0055
       output_price_per_1k: 0.0165
-    gpt_35_turbo:
+    gpt-35-turbo:
       input_price_per_1k: 0.00055
       output_price_per_1k: 0.00165
     o3:

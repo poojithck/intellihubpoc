@@ -1,0 +1,78 @@
+models:
+  gpt-4o:
+    model_id: "gpt-4o"
+    default_params:
+      max_tokens: 1000
+      temperature: 0.1
+      top_p: 1.0
+    
+    specialized_configs:
+      analysis:
+        max_tokens: 500
+        temperature: 0.1  # Low for consistent analysis
+      creative:
+        max_tokens: 1500
+        temperature: 0.7
+      text_only:
+        max_tokens: 1000
+        temperature: 0.1
+      image_analysis:
+        max_tokens: 1000
+        temperature: 0.1  # Low for consistent image analysis
+        
+  gpt-4o-mini:
+    model_id: "gpt-4o-mini"
+    default_params:
+      max_tokens: 1000
+      temperature: 0.1
+      top_p: 1.0
+    
+    specialized_configs:
+      analysis:
+        max_tokens: 500
+        temperature: 0.1
+      creative:
+        max_tokens: 1000
+        temperature: 0.7
+      text_only:
+        max_tokens: 1000
+        temperature: 0.1
+      image_analysis:
+        max_tokens: 800
+        temperature: 0.1
+        
+  gpt-35-turbo:
+    model_id: "gpt-35-turbo"
+    default_params:
+      max_tokens: 1000
+      temperature: 0.1
+      top_p: 1.0
+    
+    specialized_configs:
+      analysis:
+        max_tokens: 500
+        temperature: 0.1
+      creative:
+        max_tokens: 1000
+        temperature: 0.7
+      text_only:
+        max_tokens: 1000
+        temperature: 0.1
+        
+  o3:
+    model_id: "o3"
+    default_params:
+      max_tokens: 1000
+      temperature: 0.1
+      top_p: 1.0
+    
+    specialized_configs:
+      analysis:
+        max_tokens: 500
+        temperature: 0.1
+      creative:
+        max_tokens: 1000
+        temperature: 0.7
+      text_only:
+        max_tokens: 1000
+        temperature: 0.1

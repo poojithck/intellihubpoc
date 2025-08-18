@@ -91,11 +91,21 @@ class ConfigManager:
     def get_azure_pricing_config(self) -> Dict[str, Any]:
         """Get Azure OpenAI pricing configuration."""
         azure_config = self.get_azure_openai_config()
-        model_family = azure_config.get("model", {}).get("family", "gpt-4o-mini")
+        deployment_name = azure_config.get("deployment_name", "gpt-4o-mini")
         pricing = azure_config.get("pricing", {})
         
-        if model_family in pricing:
-            return pricing[model_family]
+        # Map deployment names to pricing keys (deployment names match pricing keys exactly)
+        deployment_to_pricing = {
+            "gpt-4o": "gpt-4o",
+            "gpt-4o-mini": "gpt-4o-mini", 
+            "gpt-35-turbo": "gpt-35-turbo",
+            "o3": "o3"
+        }
+        
+        pricing_key = deployment_to_pricing.get(deployment_name, "gpt_4o_mini")
+        
+        if pricing_key in pricing:
+            return pricing[pricing_key]
         else:
             # Default to gpt-4o-mini pricing
             return pricing.get("gpt_4o_mini", {
@@ -123,6 +133,28 @@ class ConfigManager:
             raise ValueError(f"Model configuration not found: {model_name}")
         
         return claude_config["models"][model_name]
+    
+    def get_azure_model_config(self, model_name: str = "gpt_4o") -> Dict[str, Any]:
+        """
+        Get Azure OpenAI model-specific configuration.
+        
+        Args:
+            model_name: Name of the model to get config for
+            
+        Returns:
+            Model configuration dictionary
+        """
+        azure_config = self.get_azure_openai_config()
+        models_config_file = azure_config.get("models_config_file", "configs/models/azure_openai_config.yaml")
+        
+        # Extract the filename from the path
+        config_name = models_config_file.split("/")[-1].replace(".yaml", "")
+        azure_models_config = self.load_config(config_name, "models")
+        
+        if model_name not in azure_models_config.get("models", {}):
+            raise ValueError(f"Azure OpenAI model configuration not found: {model_name}")
+        
+        return azure_models_config["models"][model_name]
     
     def get_prompt_config(self, analysis_type: str, prompts_subdir: Optional[str] = None) -> Dict[str, Any]:
         """
@@ -181,6 +213,29 @@ class ConfigManager:
             Model parameters dictionary
         """
         model_config = self.get_model_config(model_name)
+        
+        if config_type == "default_params":
+            return model_config.get("default_params", {})
+        else:
+            specialized_configs = model_config.get("specialized_configs", {})
+            if config_type not in specialized_configs:
+                logger.warning(f"Specialized config '{config_type}' not found, using default_params")
+                return model_config.get("default_params", {})
+            return specialized_configs[config_type]
+    
+    def get_azure_model_params(self, model_name: str = "gpt_4o", 
+                              config_type: str = "default_params") -> Dict[str, Any]:
+        """
+        Get Azure OpenAI model parameters for a specific configuration type.
+        
+        Args:
+            model_name: Name of the model
+            config_type: Type of configuration (default_params, analysis, creative, etc.)
+            
+        Returns:
+            Model parameters dictionary
+        """
+        model_config = self.get_azure_model_config(model_name)
         
         if config_type == "default_params":
             return model_config.get("default_params", {})

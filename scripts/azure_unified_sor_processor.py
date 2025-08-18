@@ -53,7 +53,13 @@ class AzureUnifiedSORProcessor:
 
         # Pre-load all prompt configs to avoid concurrent loading during processing
         self.prompt_configs = {}
-        self.model_params = config_manager.get_model_params(config_type=self.default_settings.get("model_config", "analysis"))
+        # Get Azure OpenAI model parameters instead of Claude model parameters
+        azure_config = config_manager.get_azure_openai_config()
+        deployment_name = azure_config.get("deployment_name", "gpt-4o")
+        self.model_params = config_manager.get_azure_model_params(
+            model_name=deployment_name,
+            config_type=self.default_settings.get("model_config", "analysis")
+        )
         
         for sor_type in self.get_enabled_sor_types():
             self.prompt_configs[sor_type] = config_manager.get_prompt_config(sor_type, prompts_subdir=self.prompts_subdir)
