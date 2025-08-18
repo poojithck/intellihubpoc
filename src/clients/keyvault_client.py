@@ -4,6 +4,8 @@ import os
 import logging
 from typing import Optional, Dict, Any
 from azure.identity import DefaultAzureCredential
+# TODO: Add missing SecretClient import for Key Vault integration
+# from azure.keyvault.secrets import SecretClient
 from azure.keyvault.secrets import SecretClient
 
 class KeyVaultClient:
@@ -121,6 +123,7 @@ class KeyVaultClient:
         vault_url = f"https://{vault_name}.vault.azure.net/"
         
         # TODO: Implement your SSO/Fabric authentication here
+        # TODO: Complete Key Vault authentication integration - currently using env vars as fallback
         # For now, using DefaultAzureCredential which may work in some environments
         credential = DefaultAzureCredential()
         

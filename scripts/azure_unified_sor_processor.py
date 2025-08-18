@@ -167,30 +167,51 @@ class AzureUnifiedSORProcessor:
         prompt_config = self.prompt_configs[sor_type]
         model_params = self.model_params
 
-        # Compose final prompt: include system + main for clarity (system may contain strict definitions)
+        # Separate system and main prompts like Bedrock approach
         system_prompt = (prompt_config.get("system_prompt") or "").strip()
         main_prompt = (prompt_config.get("main_prompt") or "").strip()
-        prompt_text = (f"{system_prompt}\n\n---\n\n{main_prompt}" if system_prompt else main_prompt).strip()
 
         # Debug preview to verify correct prompt dispatch per SOR
         try:
-            preview = (prompt_text[:300] + ("…" if len(prompt_text) > 300 else ""))
+            preview = (main_prompt[:300] + ("…" if len(main_prompt) > 300 else ""))
             self.logger.debug(f"Prompt preview for {sor_type}: {preview}")
+            if system_prompt:
+                sys_preview = (system_prompt[:150] + ("…" if len(system_prompt) > 150 else ""))
+                self.logger.debug(f"System prompt preview for {sor_type}: {sys_preview}")
         except Exception:
             pass
+        
+        # Check if per-image processing is enabled (for Bedrock-style accuracy)
+        azure_config = self.config_manager.get_azure_openai_config()
+        per_image_mode = azure_config.get("processing", {}).get("per_image_mode", False)
         
         # Run synchronous Azure OpenAI call in thread pool for true async concurrency
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            response = await loop.run_in_executor(
-                executor,
-                lambda: self.azure_client.invoke_model_multi_image(
-                    prompt=prompt_text,
-                    images=images,
-                    max_tokens=model_params.get("max_tokens"),
-                    temperature=model_params.get("temperature")
+            if per_image_mode:
+                # Use per-image processing for higher accuracy (Bedrock-style)
+                response = await loop.run_in_executor(
+                    executor,
+                    lambda: self.azure_client.invoke_model_per_image(
+                        prompt=main_prompt,
+                        images=images,
+                        max_tokens=model_params.get("max_tokens"),
+                        temperature=model_params.get("temperature"),
+                        system_prompt=system_prompt
+                    )
                 )
-            )
+            else:
+                # Use multi-image processing for speed (default)
+                response = await loop.run_in_executor(
+                    executor,
+                    lambda: self.azure_client.invoke_model_multi_image(
+                        prompt=main_prompt,
+                        images=images,
+                        max_tokens=model_params.get("max_tokens"),
+                        temperature=model_params.get("temperature"),
+                        system_prompt=system_prompt
+                    )
+                )
         
         # Parse response using shared client
         response_text = response.get("text", "")

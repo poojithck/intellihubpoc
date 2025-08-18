@@ -57,6 +57,8 @@ class AzureOpenAIClient:
         pricing_config = config_manager.get_azure_pricing_config()
         
         # Get API key from environment variable or config
+        # TODO: Integrate Key Vault authentication once keyvault_client.py is fixed
+        # Currently using environment variables as fallback
         import os
         api_key = os.getenv("AZURE_OPENAI_API_KEY")
         if not api_key:
@@ -75,7 +77,8 @@ class AzureOpenAIClient:
         prompt: str, 
         max_tokens: int = 300, 
         temperature: float = 0.7,
-        images: Optional[List[Dict[str, str]]] = None
+        images: Optional[List[Dict[str, str]]] = None,
+        system_prompt: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Invoke the model with the given prompt and optional images.
@@ -85,15 +88,16 @@ class AzureOpenAIClient:
             max_tokens: Maximum number of tokens to generate
             temperature: Controls randomness (0.0 = deterministic, 1.0 = very random)
             images: Optional list of image dictionaries with 'name' and 'data' (base64) keys
+            system_prompt: Optional system prompt to align with Bedrock approach
             
         Returns:
             Dictionary containing the model response and metadata
         """
         try:
             if images:
-                return self._invoke_multimodal_model(prompt, max_tokens, temperature, images)
+                return self._invoke_multimodal_model(prompt, max_tokens, temperature, images, system_prompt)
             else:
-                return self._invoke_text_model(prompt, max_tokens, temperature)
+                return self._invoke_text_model(prompt, max_tokens, temperature, system_prompt)
         except Exception as e:
             logging.error(f"Failed to invoke model: {str(e)}")
             raise
@@ -103,16 +107,18 @@ class AzureOpenAIClient:
         prompt: str, 
         images: List[Dict[str, str]],
         max_tokens: int = 1000, 
-        temperature: float = 0.1
+        temperature: float = 0.1,
+        system_prompt: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Invoke model with multiple images in a single request for comparison analysis.
         
         Args:
-            prompt: The text prompt to send to the model
+            prompt: The main user prompt to send to the model
             images: List of image dictionaries with 'name', 'data' (base64), and optional 'timestamp' keys
             max_tokens: Maximum number of tokens to generate
             temperature: Controls randomness (0.0 = deterministic, 1.0 = very random)
+            system_prompt: Optional system prompt to align with Bedrock approach
             
         Returns:
             Dictionary containing the model response and metadata
@@ -123,10 +129,17 @@ class AzureOpenAIClient:
         # Build content array with all images and text
         content = []
         
+        # Integrate timestamp into prompt text like Bedrock approach
+        prompt_text = prompt.strip()
+        if len(images) == 1 and images[0].get('timestamp'):
+            # For single images, integrate timestamp into prompt like Bedrock
+            timestamp = images[0]['timestamp']
+            prompt_text = f"Image capture timestamp: {timestamp}. {prompt_text}"
+        
         # Add text prompt first
         content.append({
             "type": "text",
-            "text": prompt.strip()
+            "text": prompt_text
         })
         
         # Add each image with optional timestamp info
@@ -162,41 +175,151 @@ class AzureOpenAIClient:
                 }
             })
             
-            # Add image metadata as text
-            metadata_text = f"Image {i+1:02d} of {len(images):02d}: {name}"
-            if timestamp:
-                metadata_text += f" (captured: {timestamp})"
-            
-            content.append({
-                "type": "text", 
-                "text": metadata_text
+            # Add image metadata as text (only for multi-image scenarios)
+            if len(images) > 1:
+                metadata_text = f"Image {i+1:02d} of {len(images):02d}: {name}"
+                if timestamp:
+                    metadata_text += f" (captured: {timestamp})"
+                
+                content.append({
+                    "type": "text", 
+                    "text": metadata_text
+                })
+        
+        # Build messages array with system message support like Bedrock
+        messages = []
+        
+        # Add system message if provided (aligning with Bedrock approach)
+        if system_prompt and system_prompt.strip():
+            messages.append({
+                "role": "system",
+                "content": system_prompt.strip()
             })
+        
+        # Add user message with content
+        messages.append({
+            "role": "user",
+            "content": content
+        })
         
         # Make the API call using the official client
         response = self.client.chat.completions.create(
             model=self.deployment_name,
-            messages=[
-                {
-                    "role": "user",
-                    "content": content
-                }
-            ],
+            messages=messages,
             max_tokens=max_tokens,
             temperature=temperature
         )
         
         return self._parse_azure_response(response)
     
-    def _invoke_text_model(self, prompt: str, max_tokens: int, temperature: float) -> Dict[str, Any]:
+    def invoke_model_per_image(
+        self,
+        prompt: str,
+        images: List[Dict[str, str]],
+        max_tokens: int = 1000,
+        temperature: float = 0.1,
+        system_prompt: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Invoke model with each image individually (Bedrock-style approach for accuracy).
+        Processes each image separately and combines results.
+        
+        Args:
+            prompt: The main user prompt to send to the model
+            images: List of image dictionaries with 'name', 'data' (base64), and optional 'timestamp' keys
+            max_tokens: Maximum number of tokens to generate
+            temperature: Controls randomness (0.0 = deterministic, 1.0 = very random)
+            system_prompt: Optional system prompt to align with Bedrock approach
+            
+        Returns:
+            Dictionary containing combined model response and metadata
+        """
+        if not images:
+            raise ValueError("At least one image must be provided")
+        
+        results = []
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_cost = 0.0
+        
+        for i, image_info in enumerate(images):
+            name = image_info['name']
+            timestamp = image_info.get('timestamp')
+            
+            # Adjust prompt with timestamp like Bedrock does
+            image_prompt = prompt
+            if timestamp:
+                image_prompt = f"Image capture timestamp: {timestamp}. {prompt.strip()}"
+            
+            # Process single image
+            try:
+                response = self.invoke_model_multi_image(
+                    prompt=image_prompt,
+                    images=[image_info],  # Single image
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                    system_prompt=system_prompt
+                )
+                
+                # Accumulate metrics
+                total_input_tokens += response.get("input_tokens", 0)
+                total_output_tokens += response.get("output_tokens", 0)
+                total_cost += response.get("total_cost", 0.0)
+                
+                # Store individual result
+                results.append({
+                    "image_name": name,
+                    "response": response.get("text", ""),
+                    "timestamp": timestamp
+                })
+                
+            except Exception as e:
+                logging.error(f"Failed to process image {name}: {str(e)}")
+                results.append({
+                    "image_name": name,
+                    "response": f"Error processing image: {str(e)}",
+                    "timestamp": timestamp
+                })
+        
+        # Combine all individual responses
+        combined_text = "\n\n".join([
+            f"Image: {result['image_name']}\nResponse: {result['response']}"
+            for result in results
+        ])
+        
+        return {
+            "text": combined_text,
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "total_tokens": total_input_tokens + total_output_tokens,
+            "input_cost": total_input_tokens * (self.pricing_config["input_price_per_1k"] / 1000),
+            "output_cost": total_output_tokens * (self.pricing_config["output_price_per_1k"] / 1000),
+            "total_cost": total_cost,
+            "individual_results": results,
+            "processing_mode": "per_image"
+        }
+    
+    def _invoke_text_model(self, prompt: str, max_tokens: int, temperature: float, system_prompt: Optional[str] = None) -> Dict[str, Any]:
         """Invoke model with text-only prompt."""
+        # Build messages array with system message support like Bedrock
+        messages = []
+        
+        # Add system message if provided (aligning with Bedrock approach)
+        if system_prompt and system_prompt.strip():
+            messages.append({
+                "role": "system",
+                "content": system_prompt.strip()
+            })
+        
+        # Add user message
+        messages.append({
+            "role": "user",
+            "content": prompt.strip()
+        })
+        
         response = self.client.chat.completions.create(
             model=self.deployment_name,
-            messages=[
-                {
-                    "role": "user",
-                    "content": prompt.strip()
-                }
-            ],
+            messages=messages,
             max_tokens=max_tokens,
             temperature=temperature
         )
@@ -208,11 +331,12 @@ class AzureOpenAIClient:
         prompt: str, 
         max_tokens: int, 
         temperature: float, 
-        images: List[Dict[str, str]]
+        images: List[Dict[str, str]],
+        system_prompt: Optional[str] = None
     ) -> Dict[str, Any]:
         """Invoke model with text and image prompts."""
         # For Azure OpenAI, we can send multiple images in a single request
-        return self.invoke_model_multi_image(prompt, images, max_tokens, temperature)
+        return self.invoke_model_multi_image(prompt, images, max_tokens, temperature, system_prompt)
     
     def _parse_azure_response(self, response) -> Dict[str, Any]:
         """Parse Azure OpenAI response to match BedrockClient format."""

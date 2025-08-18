@@ -52,3 +52,8 @@ azure_openai:
   image_limits:
     max_size_mb: 20  # Azure OpenAI 20MB limit
     supported_formats: ["png", "jpg", "jpeg", "gif", "webp"]
+    
+  # Processing mode configuration
+  processing:
+    # Use per-image processing for higher accuracy (like Bedrock) vs multi-image for speed
+    per_image_mode: false  # Set to true for Bedrock-style accuracy, false for speed
