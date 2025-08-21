@@ -5,6 +5,21 @@ import json
 from pathlib import Path
 from typing import Dict, Tuple
 
+# =============================================================================
+# HARDCODED FILE PATH OPTION
+# =============================================================================
+# Set this to a specific results CSV path if you want to override auto-detection
+# Leave as None to use the latest batch results automatically
+# 
+# PRIORITY ORDER:
+# 1. HARDCODED_RESULTS_PATH (if set)
+# 2. --results-csv CLI argument (if provided)
+# 3. Auto-detection of latest batch results
+#
+# Example: HARDCODED_RESULTS_PATH = "outputs/batch_results_20241201_143022/sor_results.csv"
+HARDCODED_RESULTS_PATH = ""#r"outputs\batch_results_20250821_113018\sor_results.csv"
+# =============================================================================
+
 # Mapping from SOR names to the CSV column suffix used by the table generator
 SOR_STATUS_COLS = {
     "MeterConsolidationE4": "MeterConsolidationE4_Status",
@@ -199,7 +214,12 @@ def main():
         "--results-csv",
         type=str,
         required=False,
-        help="Path to sor_results.csv (if omitted, will auto-detect the most recent in outputs)",
+        help="Path to sor_results.csv (priority: hardcoded path > CLI arg > auto-detection)",
+    )
+    parser.add_argument(
+        "--all-batches",
+        action="store_true",
+        help="Evaluate all batches under outputs/ (excluding 'Archive Batches')",
     )
     parser.add_argument(
         "--answers-csv",
@@ -213,7 +233,137 @@ def main():
     if not answers_path.exists():
         raise FileNotFoundError(f"Correct answers file not found: {answers_path}")
 
-    if args.results_csv:
+    def find_all_batches(outputs_root: Path) -> list[Path]:
+        paths: list[Path] = []
+        if not outputs_root.exists():
+            return paths
+        for csv_path in outputs_root.rglob("sor_results.csv"):
+            # Exclude any path that contains 'Archive Batches' in its parts
+            if any(part.lower() == "archive batches" for part in csv_path.parts):
+                continue
+            paths.append(csv_path)
+        # Sort newest first
+        paths.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+        return paths
+
+    def read_summary_metadata(results_csv_path: Path) -> tuple[str, str]:
+        """Return (client_type, prompt_version) from summary.json or log if available."""
+        batch_dir = results_csv_path.parent
+        client_type = "unknown"
+        prompt_version = "unknown"
+
+        summary_file = batch_dir / "summary.json"
+        if summary_file.exists():
+            try:
+                with open(summary_file, 'r') as f:
+                    summary = json.load(f)
+                # Prefer top-level, then batch_metadata path
+                client_type = (
+                    summary.get("client_type")
+                    or summary.get("batch_metadata", {}).get("client_type")
+                    or client_type
+                )
+                prompt_version = (
+                    summary.get("batch_metadata", {})
+                    .get("prompt_configuration", {})
+                    .get("prompt_version", prompt_version)
+                )
+                return client_type, prompt_version
+            except Exception:
+                pass
+
+        # Fallback: attempt to parse from log
+        log_file = batch_dir / "log.txt"
+        if log_file.exists():
+            try:
+                with open(log_file, 'r') as f:
+                    for line in f:
+                        if "Client Type:" in line:
+                            try:
+                                client_type = line.split("Client Type:", 1)[1].strip()
+                            except Exception:
+                                pass
+                        if "Prompt Version:" in line:
+                            try:
+                                prompt_version = line.split("Prompt Version:", 1)[1].strip()
+                            except Exception:
+                                pass
+            except Exception:
+                pass
+        return client_type, prompt_version
+
+    def evaluate_and_print(results_csv_path: Path, answers: dict) -> tuple[dict, dict]:
+        results = load_results_table(results_csv_path)
+        counts, accuracies = evaluate(results, answers)
+
+        # Display metadata header per batch
+        print("\n" + "-" * 80)
+        print(f"Batch: {results_csv_path.parent.name}")
+        print("-" * 80)
+        display_batch_metadata(results_csv_path)
+
+        print("\nEvaluation Summary")
+        print("==================")
+        for sor in ("FuseReplacement", "MeterConsolidationE4", "PlugInMeterRemoval"):
+            c = counts[sor]
+            acc = accuracies[sor]
+            print(f"{sor}: {c['correct']}/{c['total']} correct ({acc:.2f}%)")
+
+        overall_correct = sum(counts[s]["correct"] for s in counts)
+        overall_total = sum(counts[s]["total"] for s in counts)
+        overall_acc = (overall_correct / overall_total * 100.0) if overall_total else 0.0
+        print(f"Overall: {overall_correct}/{overall_total} correct ({overall_acc:.2f}%)\n")
+        print(f"Compared results: {results_csv_path}")
+        return counts, accuracies
+
+    answers = load_correct_answers(answers_path)
+
+    if args.all_batches:
+        outputs_dir = Path("outputs")
+        batch_csvs = find_all_batches(outputs_dir)
+        if not batch_csvs:
+            raise FileNotFoundError("No sor_results.csv found under outputs/ (excluding 'Archive Batches')")
+
+        # Keep a compact comparison list
+        comparison_rows = []  # (batch_name, prompt_version, service, fuse_acc, meter_acc, plug_acc, overall_acc)
+
+        for csv_path in batch_csvs:
+            counts, accuracies = evaluate_and_print(csv_path, answers)
+            service, prompt_version = read_summary_metadata(csv_path)
+            overall_correct = sum(counts[s]["correct"] for s in counts)
+            overall_total = sum(counts[s]["total"] for s in counts)
+            overall_acc = (overall_correct / overall_total * 100.0) if overall_total else 0.0
+            comparison_rows.append(
+                (
+                    csv_path.parent.name,
+                    prompt_version or "unknown",
+                    service or "unknown",
+                    accuracies.get("FuseReplacement", 0.0),
+                    accuracies.get("MeterConsolidationE4", 0.0),
+                    accuracies.get("PlugInMeterRemoval", 0.0),
+                    overall_acc,
+                )
+            )
+
+        # Print compact comparison table
+        print("\n" + "=" * 80)
+        print("BATCH COMPARISON (most recent first)")
+        print("=" * 80)
+        header = f"{'Batch':32s}  {'Prompt':10s}  {'Service':12s}  {'Fuse%':>7s}  {'Meter%':>7s}  {'Plug%':>7s}  {'Overall%':>8s}"
+        print(header)
+        print("-" * len(header))
+        for name, prompt_version, service, fuse_acc, meter_acc, plug_acc, overall_acc in comparison_rows:
+            print(f"{name:32s}  {prompt_version:10s}  {service:12s}  {fuse_acc:7.2f}  {meter_acc:7.2f}  {plug_acc:7.2f}  {overall_acc:8.2f}")
+        print()
+        print(f"Against answers:  {answers_path}")
+        return
+
+    # Single-batch path (existing behavior)
+    # Check for hardcoded path first, then CLI argument, then auto-detection
+    if HARDCODED_RESULTS_PATH:
+        results_csv_path = Path(HARDCODED_RESULTS_PATH)
+        print(f"Using hardcoded results path: {results_csv_path}")
+    elif args.results_csv:
         results_csv_path = Path(args.results_csv)
     else:
         # Auto-detect most recent sor_results.csv under outputs/
@@ -222,31 +372,13 @@ def main():
         if not candidates:
             raise FileNotFoundError("No sor_results.csv found under outputs/batch_results_*/")
         results_csv_path = candidates[0]
+        print(f"Auto-detected latest results: {results_csv_path}")
 
     if not results_csv_path.exists():
         raise FileNotFoundError(f"Results CSV not found: {results_csv_path}")
 
-    answers = load_correct_answers(answers_path)
-    results = load_results_table(results_csv_path)
-
-    counts, accuracies = evaluate(results, answers)
-
-    # Display batch metadata if available
-    display_batch_metadata(results_csv_path)
-
-    print("\nEvaluation Summary")
-    print("==================")
-    for sor in ("FuseReplacement", "MeterConsolidationE4", "PlugInMeterRemoval"):
-        c = counts[sor]
-        acc = accuracies[sor]
-        print(f"{sor}: {c['correct']}/{c['total']} correct ({acc:.2f}%)")
-
-    overall_correct = sum(counts[s]["correct"] for s in counts)
-    overall_total = sum(counts[s]["total"] for s in counts)
-    overall_acc = (overall_correct / overall_total * 100.0) if overall_total else 0.0
-    print(f"Overall: {overall_correct}/{overall_total} correct ({overall_acc:.2f}%)\n")
-
-    print(f"Compared results: {results_csv_path}")
+    # Evaluate single batch
+    _, _ = evaluate_and_print(results_csv_path, answers)
     print(f"Against answers:  {answers_path}")
 
 

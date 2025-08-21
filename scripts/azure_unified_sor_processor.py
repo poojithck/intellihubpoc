@@ -77,6 +77,7 @@ class AzureUnifiedSORProcessor:
         self.targeted_mode = targeted_cfg.get("enabled", False)
         self.folder_mapping = targeted_cfg.get("folder_mapping", {})
         self.default_folder_name = targeted_cfg.get("default_folder", "Meter Board")
+        self.fallback_to_default_folder = bool(targeted_cfg.get("fallback_to_default_folder", True))
         self.max_images_per_sor = int(targeted_cfg.get("max_images_per_sor", 0) or 0)
         
     def get_enabled_sor_types(self) -> List[str]:
@@ -154,20 +155,23 @@ class AzureUnifiedSORProcessor:
                                images: List[Dict[str, str]], work_order_info: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a single SOR type using provided images (targeted)."""
         
-        # Check if we have images to analyze
+        # Check if we have images to analyze. If none, return deterministic FAIL.
         if not images:
             self.logger.warning(f"No images provided for SOR type {sor_type}")
-            return {
+            boolean_field = self.sor_config.get("sor_analysis", {}).get("table_generation", {}).get("boolean_fields", {}).get(sor_type)
+            result_base = {
                 "sor_type": sor_type,
                 "work_order": work_order_info["work_order_number"],
                 "folder_name": work_order_info["folder_name"],
                 "analysis_timestamp": datetime.now().isoformat(),
-                "error": "No images provided for analysis",
-                "status": "error",
+                "Notes": "No targeted evidence provided for this SOR",
                 "total_cost": 0,
                 "input_tokens": 0,
                 "output_tokens": 0
             }
+            if boolean_field:
+                result_base[boolean_field] = False
+            return result_base
         
         # Get pre-loaded prompt configuration for this SOR type
         prompt_config = self.prompt_configs[sor_type]
@@ -388,8 +392,8 @@ class AzureUnifiedSORProcessor:
                             imgs = load_folder(candidate)
                             if imgs:
                                 selected_imgs.extend(imgs)
-                    # Fallback to default folder if nothing found
-                    if not selected_imgs:
+                    # Fallback to default folder if enabled and nothing found
+                    if not selected_imgs and self.fallback_to_default_folder:
                         fallback = wo_path / self.default_folder_name
                         if fallback.exists() and fallback.is_dir():
                             selected_imgs = load_folder(fallback)

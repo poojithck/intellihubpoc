@@ -11,12 +11,12 @@ sor_analysis:
     model_config: "analysis"
   # Use targeted prompts from nested folder with versioning
   prompt_subdir: "prompts/Targeted-Prompts"
-  prompt_version: "v1"
+  prompt_version: "v2.1"
     
   # Define available SOR types and their configurations
   sor_types:
     AsbestosBagAndBoard:
-      enabled: true
+      enabled: false
       description: "Analyzes asbestos bag and meter board for asbestos claims"
       prompt_config: "AsbestosBagAndBoard"
       required_fields:
@@ -26,7 +26,7 @@ sor_analysis:
         - "Notes"
       
     CertificateOfCompliance:
-      enabled: true
+      enabled: false
       description: "Analyzes meter board for compliance certificate"
       prompt_config: "CertificateOfCompliance"
       required_fields:
@@ -65,7 +65,7 @@ sor_analysis:
         - "notes"
         
     ServiceProtectionDevices:
-      enabled: true
+      enabled: false
       description: "Analyzes service protection device installation"
       prompt_config: "ServiceProtectionDevices"
       required_fields:
@@ -75,7 +75,7 @@ sor_analysis:
         - "notes"
         
     SwitchInstallation:
-      enabled: true
+      enabled: false
       description: "Analyzes switch installation evidence"
       prompt_config: "SwitchInstallation"
       required_fields:
@@ -84,7 +84,7 @@ sor_analysis:
         - "notes"
         
     NeutralLinkInstallation:
-      enabled: true
+      enabled: false
       description: "Analyzes neutral link installation evidence"
       prompt_config: "NeutralLinkInstallation"
       required_fields:
@@ -94,7 +94,7 @@ sor_analysis:
         - "notes"
         
     meter_reading:
-      enabled: true
+      enabled: false
       description: "Analyzes meter readings from utility meters"
       prompt_config: "meter_reading"
       required_fields:
@@ -134,6 +134,7 @@ sor_analysis:
   targeted_images:
     enabled: true
     default_folder: "Meter Board"
+    fallback_to_default_folder: false
     # Optional cap to reduce per-SOR payload size and speed up processing
     max_images_per_sor: 6
     folder_mapping:
