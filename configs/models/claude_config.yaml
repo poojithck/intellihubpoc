@@ -8,8 +8,8 @@ models:
     
     specialized_configs:
       analysis:
-        max_tokens: 200
-        temperature: 0.1  # Low for consistent answers
+        max_tokens: 500
+        temperature: 0  # Low for consistent answers
       creative:
         max_tokens: 500
         temperature: 0.8

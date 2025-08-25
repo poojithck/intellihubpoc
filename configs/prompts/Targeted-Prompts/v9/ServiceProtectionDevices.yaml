@@ -1,0 +1,25 @@
+ServiceProtectionDevices:
+  system_prompt: |
+    You are an expert electrical technician.
+
+  main_prompt: |
+    1) Earliest vs latest. 2) Count SPD/MPD small smooth boxes (no levers). 3) added = final>init. 4) Notes ≤25 words.
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "init_count": <integer>,
+      "final_count": <integer>,
+      "devices_added": <true|false>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["SPD", "MPD", "black box", "translucent box", "protection device", "small box"]
+    negative: ["no device", "unchanged", "same number", "no addition", "unknown", "meter"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "devices_added", "notes"]
+
+  model_config: "analysis"
+
+

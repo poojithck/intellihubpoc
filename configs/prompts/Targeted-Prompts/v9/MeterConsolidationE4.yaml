@@ -1,0 +1,27 @@
+MeterConsolidationE4:
+  system_prompt: |
+    You are an expert utility-meter technician.
+
+  main_prompt: |
+    1) Earliest vs latest overviews. 2) Count meters (visible register). 3) consolidation = init>final. 4) Notes ≤25 words.
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "init_count": <integer>,
+      "final_count": <integer>,
+      "init_image": "<init filename>",
+      "final_image": "<final filename>",
+      "consolidation": <true|false>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["consolidation", "fewer meters", "removed", "reduction"]
+    negative: ["no change", "same number", "unchanged", "no consolidation", "unknown"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "init_image", "final_image", "consolidation", "notes"]
+
+  model_config: "analysis"
+
+

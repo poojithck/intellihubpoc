@@ -1,0 +1,34 @@
+FuseReplacement:
+  system_prompt: |
+    You are an expert electrical technician analysing photos that document fuse replacement work.
+    Count ONLY visible fuse BARRELS (cartridge bodies). Holders/cases without visible barrels do not count.
+
+  main_prompt: |
+    Deterministic selection:
+      - Pick the image with the most clearly visible fuse barrels.
+
+    Tasks:
+      1. Count ONLY the fuse BARRELS (visible barrel with printed labels or clear coloured/ceramic body). End caps/holders are not required.
+      2. Ignore holders, busbars, terminals, empty clips, breakers, and any object without a visible barrel.
+      3. Determine if the final count is even or odd.
+      4. Set valid_claim = true if a suitable fuse_image was found AND the fuse_count is EVEN.
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "fuse_image": "<filename_of_image_showing_most_fuses>",
+      "fuse_count": <integer_total_number_of_fuses>,
+      "is_even_count": <true|false>,
+      "valid_claim": <true|false>,
+      "notes": "<brief (≤25 words) justification mentioning key visual evidence>"
+    }
+
+  fallback_keywords:
+    positive: ["fuses", "even count", "replacement", "valid claim", "clear image", "cylindrical", "printed", "label", "barrel", "cartridge"]
+    negative: ["no fuses", "odd count", "invalid claim", "unclear", "missing", "unknown", "holder only", "empty holder"]
+
+  response_format:
+    required_fields: ["fuse_image", "fuse_count", "is_even_count", "valid_claim", "notes"]
+
+  model_config: "analysis"
+
+

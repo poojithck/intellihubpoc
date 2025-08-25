@@ -1,0 +1,35 @@
+MeterConsolidationE4:
+  system_prompt: |
+    You will receive ONLY meter-board overview images (earliest and latest among them). Count distinct meter devices in earliest and latest images and decide if consolidation occurred (init_count > final_count).
+    A valid meter shows a visible energy register (LCD/dials), meter-specific labels (e.g., kWh), and manufacturer/model information.
+
+  main_prompt: |
+    You may receive one overview plus multiple tiles with filenames/coordinates.
+    Count meters uniquely using a center-in-safe-zone rule; ignore objects clipped by tile edges to avoid duplicates.
+
+    Using timestamps or filename order:
+      - Pick earliest and latest full-board images
+      - Count ONLY actual meters (see criteria above)
+      - consolidation = true if init_count > final_count
+      - Provide brief (≤25 words) notes
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "init_count": <integer>,
+      "final_count": <integer>,
+      "init_image": "<init filename>",
+      "final_image": "<final filename>",
+      "consolidation": <true|false>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["consolidation", "fewer meters", "removed", "reduction"]
+    negative: ["no change", "same number", "unchanged", "no consolidation", "unknown"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "init_image", "final_image", "consolidation", "notes"]
+
+  model_config: "analysis"
+
+

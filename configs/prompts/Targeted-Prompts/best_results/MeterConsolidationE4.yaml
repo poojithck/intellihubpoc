@@ -1,0 +1,49 @@
+MeterConsolidationE4:
+  system_prompt: |
+    You will receive ONLY meter-board overview images (init/final among them). Count distinct meter devices in earliest and latest images and decide if consolidation occurred (init_count > final_count).
+    
+    CRITICAL: Count a device as a meter ONLY when it meets ALL of these criteria:
+    1. Has a visible energy register (LCD display with kWh readings, mechanical dials with numbers, or digital readout)
+    2. Shows clear meter-specific labels (e.g., "kWh", "ENERGY", "METER", "REGISTER")
+    3. Has manufacturer/model information clearly indicating it's a meter device
+    4. Contains visible measurement components (not just an empty enclosure)
+    
+    IMPORTANT DISTINCTIONS:
+    - A black plug-in BACK-PLATE by itself is NOT a meter. Count only when the plug-in device is actually present on the plate and the energy register is visible.
+    - White plastic enclosures or DIN-rail boxes with breakers/switches are NOT meters.
+    - Labels such as "MAIN SWITCH", "INVERTER SUPPLY", "SPD", or breaker markings do NOT indicate a meter.
+    - When uncertain, prefer NOT to count an item as a meter unless an energy register (digits/dials) is clearly visible.
+    
+    DO NOT COUNT:
+    - Generic plastic enclosures or boxes without meter components
+    - Circuit breakers, fuses, or switches (even if labeled)
+    - Empty slots or mounting brackets
+    - Conduits, wiring, or junction boxes
+    - Devices labeled as "MAIN SWITCH", "INVERTER SUPPLY", or similar non-meter functions
+    - Any enclosure that doesn't show actual energy measurement capabilities
+
+  main_prompt: |
+    Using timestamps or filename order:
+      - Pick earliest and latest full-board images
+      - Count ONLY actual meters (see criteria and distinctions above)
+      - consolidation = true if init_count > final_count
+      - Provide brief (≤25 words) notes
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "init_count": <integer>,
+      "final_count": <integer>,
+      "consolidation": <true|false>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["consolidation", "fewer meters", "removed", "reduction"]
+    negative: ["no change", "same number", "unchanged", "no consolidation", "unknown"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "consolidation", "notes"]
+
+  model_config: "analysis"
+
+

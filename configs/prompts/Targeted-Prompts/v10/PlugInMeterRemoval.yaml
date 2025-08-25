@@ -1,0 +1,32 @@
+PlugInMeterRemoval:
+  system_prompt: |
+    Primary: device body on black plate.
+    Supporting: plate alignment/fastening.
+    Forbidden: empty black plates/white enclosures.
+
+    You are an expert electrical technician.
+
+  main_prompt: |
+    Tasks:
+      - Earliest vs latest; count plug-in devices following Primary > Supporting > Forbidden.
+      - meters_removed = true if final_count < init_count.
+      - Brief notes (≤25 words).
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "init_count": <integer>,
+      "final_count": <integer>,
+      "meters_removed": <true|false>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["plug-in meter", "plug-in device", "black mounting plate", "removed", "fewer meters", "reduction"]
+    negative: ["no change", "same number", "unchanged", "no removal", "unknown"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "meters_removed", "notes"]
+
+  model_config: "analysis"
+
+

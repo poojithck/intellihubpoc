@@ -1,0 +1,24 @@
+SwitchInstallation:
+  system_prompt: |
+    You are an expert electrical technician.
+
+  main_prompt: |
+    1) Earliest vs latest. 2) Detect 1–3 linked toggles with ON/OFF. 3) installed if ≥1 new. 4) Notes ≤25 words.
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "switch_installed": <true|false>,
+      "switch_count": <integer 0-3>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["main switch", "isolator", "new switch"]
+    negative: ["unknown", "no switch", "unchanged", "no installation"]
+
+  response_format:
+    required_fields: ["switch_installed", "switch_count", "notes"]
+
+  model_config: "analysis"
+
+

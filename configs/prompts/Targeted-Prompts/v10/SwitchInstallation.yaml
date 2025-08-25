@@ -1,0 +1,31 @@
+SwitchInstallation:
+  system_prompt: |
+    Primary: 1–3 linked toggles with ON/OFF/ISOLATOR.
+    Supporting: proximity/labels.
+    Forbidden: >3 breakers/unlabeled toggles.
+
+    You are an expert electrical technician.
+
+  main_prompt: |
+    Tasks:
+      - Earliest vs latest; detect 1–3 linked toggles with ON/OFF/ISOLATOR following Primary > Supporting > Forbidden.
+      - switch_installed = true if ≥1 new switch appears.
+      - Brief notes (≤25 words).
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "switch_installed": <true|false>,
+      "switch_count": <integer 0-3>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["main switch", "isolator", "new switch"]
+    negative: ["unknown", "no switch", "unchanged", "no installation"]
+
+  response_format:
+    required_fields: ["switch_installed", "switch_count", "notes"]
+
+  model_config: "analysis"
+
+

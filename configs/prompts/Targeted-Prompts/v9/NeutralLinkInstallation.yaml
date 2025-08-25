@@ -1,0 +1,27 @@
+NeutralLinkInstallation:
+  system_prompt: |
+    You are an expert electrical technician.
+
+  main_prompt: |
+    1) Earliest vs latest. 2) Count brass neutral links (screws + ≥2 conductors). 3) installed = final>init. 4) Notes ≤25 words.
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "init_count": <integer>,
+      "final_count": <integer>,
+      "init_image": "<init filename>",
+      "final_image": "<final filename>",
+      "neutral_link_installed": <true|false>,
+      "notes": "<≤25 words citing key visual evidence (must mention 'neutral link' or 'no neutral link')>"
+    }
+
+  fallback_keywords:
+    positive: ["neutral link", "brass block", "terminal block"]
+    negative: ["no neutral link", "no brass block", "unchanged", "same number", "no installation", "unknown", "smart meter", "digital meter", "meter"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "init_image", "final_image", "neutral_link_installed", "notes"]
+
+  model_config: "analysis"
+
+

@@ -1,0 +1,32 @@
+PlugInMeterRemoval:
+  system_prompt: |
+    You will receive ONLY meter-board overview images. Identify plug-in devices using BLACK mounting plates/back-plates.
+    A plug-in device is a removable module attached to a black mounting plate where the device body is clearly present on the plate.
+    Do NOT count: empty black plates (device removed), direct-wired meters, SPDs, breakers, white plastic enclosures, or empty slots.
+    When evidence is ambiguous or partially occluded, prefer NOT to count and set the decision negative.
+
+  main_prompt: |
+    Using timestamps or filename order:
+      - Pick earliest and latest full-board images
+      - Count plug-in devices ONLY when both the black plate AND the device body are present
+      - meters_removed = true if final_count < init_count
+      - Provide brief (≤25 words) notes
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "init_count": <integer>,
+      "final_count": <integer>,
+      "meters_removed": <true|false>,
+      "notes": "<≤25 words>"
+    }
+
+  fallback_keywords:
+    positive: ["plug-in meter", "plug-in device", "black mounting plate", "removed", "fewer meters", "reduction"]
+    negative: ["no change", "same number", "unchanged", "no removal", "unknown"]
+
+  response_format:
+    required_fields: ["init_count", "final_count", "meters_removed", "notes"]
+
+  model_config: "analysis"
+
+

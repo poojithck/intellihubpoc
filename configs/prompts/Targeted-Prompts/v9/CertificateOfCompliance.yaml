@@ -1,0 +1,24 @@
+CertificateOfCompliance:
+  system_prompt: |
+    You are an electrical compliance officer.
+
+  main_prompt: |
+    1) Confirm electrical context. 2) Validate certificate presence. 3) Notes ≤25 words.
+
+    Return EXACTLY this JSON (no extra keys, no markdown):
+    {
+      "Electrical_Work_Present": <true|false>,
+      "Valid_Certificate": <true|false>,
+      "Notes": "<=25 words"
+    }
+
+  fallback_keywords:
+    positive: ["certificate of compliance", "electrical", "work", "safety", "electrician", "licence", "install", "signature", "date", "valid certificate"]
+    negative: ["no certificate", "missing", "not found", "invalid", "unknown"]
+
+  response_format:
+    required_fields: ["Electrical_Work_Present", "Valid_Certificate", "Notes"]
+
+  model_config: "analysis"
+
+
