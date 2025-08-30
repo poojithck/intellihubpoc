@@ -11,6 +11,7 @@ This document explains the key components involved in the Azure SOR pipeline and
 - Selects targeted images per SOR type (config-driven) and preloads prompts (versioned).
 - Performs per-SOR analysis in `_analyze_sor_type(...)`.
 - Aggregates results, tracks token usage/cost, writes CSV and JSON summaries.
+- **Dependencies from src/**: Uses 6 specific tools (see section 1.1 below).
 
 ### `src/clients/azure_openai_client.py`
 - Wraps Azure OpenAI Chat Completions API.
@@ -26,6 +27,22 @@ This document explains the key components involved in the Azure SOR pipeline and
 ### `configs/sor_analysis_config.yaml`
 - Toggles client type and SOR enablement.
 - Sets prompt directory/version and batch settings.
+
+#### 1.1) Dependencies: src/ Tools Used by Azure Processor
+
+The Azure processor imports and uses these specific components from src/:
+
+**Direct imports (module level):**
+- `src.config.ConfigManager` - Configuration management
+- `src.tools.results_table_generator.ResultsTableGenerator` - CSV/Excel output generation
+- `src.utils.setup_logging` - Logging configuration
+- `src.utils.CLIConfig` - Command-line argument handling
+
+**Dynamic imports (within functions):**
+- `src.clients.azure_openai_client.AzureOpenAIClient` - Azure API client (imported in `__init__`)
+- `src.tools.image_loader.ImageLoader` - Image loading and base64 encoding (imported in `prepare_images_sync`)
+
+**Not used by Azure processor:** `image_analyzer.py`, `image_gridder.py`, `work_order_processor.py`, `bedrock_client.py`, `keyvault_client.py`
 
 ---
 
