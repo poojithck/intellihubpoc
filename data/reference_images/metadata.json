@@ -1,0 +1,38 @@
+{
+  "valid_meter_01": {
+    "category": "valid_meter"
+  },
+  "valid_meter_02": {
+    "category": "valid_meter"
+  },
+  "valid_meter_03": {
+    "category": "valid_meter"
+  },
+  "valid_meter_04": {
+    "category": "valid_meter"
+  },
+  "valid_meter_05": {
+    "category": "valid_meter"
+  },
+  "valid_meter_06": {
+    "category": "valid_meter"
+  },
+  "valid_meter_08": {
+    "category": "valid_meter"
+  },
+  "valid_meter_09": {
+    "category": "valid_meter"
+  },
+  "valid_meter_10": {
+    "category": "valid_meter"
+  },
+  "valid_meter_11": {
+    "category": "valid_meter"
+  },
+  "valid_meter_13": {
+    "category": "valid_meter"
+  },
+  "not_meter_01": {
+    "category": "not_a_meter"
+  }
+}

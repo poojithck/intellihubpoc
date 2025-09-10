@@ -114,7 +114,7 @@ sor_analysis:
   # Default folder paths
   default_paths:
     single_sor_image_folder: "artefacts/Fuse-Replacement-Examples"
-    batch_parent_folder: "C:/Users/George.Nizoridis/OneDrive - Service Stream/Admin/Intellihub AI Analysis/All-WOs - Copy"
+    batch_parent_folder: "C:/Users/Poojith.Cherukattil/Service Stream/A&I Team - DataStore - Intellihub AI Analysis/All-WOs - Copy"
     batch_output_folder: "outputs/batch_results"
     
   # Batch processing configuration
