@@ -109,6 +109,8 @@ class UnifiedSORProcessor:
         self.default_folder_name = targeted_cfg.get("default_folder", "Meter Board")
         self.fallback_to_default_folder = bool(targeted_cfg.get("fallback_to_default_folder", True))
         self.max_images_per_sor = int(targeted_cfg.get("max_images_per_sor", 0) or 0)
+
+
         
     def get_enabled_sor_types(self) -> List[str]:
         """Get list of enabled SOR types from configuration."""
@@ -189,11 +191,26 @@ class UnifiedSORProcessor:
                                images: List[Dict[str, str]], work_order_info: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a single SOR type using provided images (targeted or grids)."""
         
-
-        
         # Get pre-loaded prompt configuration for this SOR type
         prompt_config = self.prompt_configs[sor_type]
         model_params = self.model_params
+
+        # Initialize RAG pipeline if needed for MeterConsolidationE4
+        if sor_type == "MeterConsolidationE4":
+            try:
+                from src.rag.pipeline import RAGPipeline
+                rag_pipeline = RAGPipeline(self.config_manager)
+                
+                # Enhance with RAG
+                prompt_config, images = rag_pipeline.enhance_sor_analysis(
+                    sor_type=sor_type,
+                    prompt_config=prompt_config,
+                    work_order_images=images
+                )
+                
+                self.logger.info(f"RAG enhancement applied for {sor_type}")
+            except Exception as e:
+                self.logger.warning(f"RAG enhancement failed, continuing without it: {e}")
 
         # Compose final prompt: include system + main for clarity (system may contain strict definitions)
         system_prompt = (prompt_config.get("system_prompt") or "").strip()

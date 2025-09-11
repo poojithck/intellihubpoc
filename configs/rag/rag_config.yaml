@@ -1,0 +1,7 @@
+enabled: true
+repository_path: 'data/reference_images'
+max_reference_images: 20
+reference_images:
+  max_width: 800
+  max_height: 800
+  quality: 85
