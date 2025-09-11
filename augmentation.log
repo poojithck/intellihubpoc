@@ -1,0 +1,7 @@
+2025-09-11 22:13:42,571 - INFO - Using simple OpenCV augmentations
+2025-09-11 22:13:42,571 - INFO - ============================================================
+2025-09-11 22:13:42,572 - INFO - STARTING AUGMENTATION PROCESS
+2025-09-11 22:13:42,572 - INFO - ============================================================
+2025-09-11 22:13:42,573 - INFO - Output folder ready: output
+2025-09-11 22:13:42,574 - INFO - Searching for images in: data
+2025-09-11 22:13:42,577 - WARNING - No image files found!

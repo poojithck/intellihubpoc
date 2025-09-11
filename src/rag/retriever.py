@@ -11,13 +11,27 @@ class ImageRetriever:
         self.config = config
         self.logger = logging.getLogger(__name__)
     
-    def retrieve_for_meter_consolidation(self, max_examples: int = None) -> Dict[str, List[ReferenceImage]]:
+    def retrieve_for_sor_type(self, sor_type: str, max_examples: int = None) -> Dict[str, List[ReferenceImage]]:
+        """Retrieve reference images for a specific SOR type."""
         
         if max_examples is None:
             max_examples = self.config.get('max_reference_images', 3)
         
-        self.logger.info(f"Retrieving reference images for meter consolidation")
+        self.logger.info(f"Retrieving reference images for {sor_type}")
         
+        # Define retrieval logic per SOR type
+        if sor_type == "MeterConsolidationE4":
+            return self._retrieve_meter_consolidation_examples(max_examples)
+        elif sor_type == "FuseReplacement":
+            return self._retrieve_fuse_examples(max_examples)
+        elif sor_type == "PlugInMeterRemoval":
+            return self._retrieve_plug_meter_examples(max_examples)
+        # Add more SOR types as needed
+        else:
+            return self._retrieve_default_examples(max_examples)
+    
+    def _retrieve_meter_consolidation_examples(self, max_examples: int) -> Dict[str, List[ReferenceImage]]:
+        """Retrieve examples for meter consolidation."""
         examples = {
             'valid_meters': [],
             'not_meters': []
@@ -35,3 +49,35 @@ class ImageRetriever:
         self.logger.info(f"Retrieved {total} reference images ({len(examples['valid_meters'])} valid, {len(examples['not_meters'])} invalid)")
         
         return examples
+    
+    def _retrieve_fuse_examples(self, max_examples: int) -> Dict[str, List[ReferenceImage]]:
+        """Retrieve examples for fuse replacement."""
+        # Customize for fuse-specific categories if needed
+        examples = {
+            'valid_fuses': [],
+            'invalid_fuses': []
+        }
+        
+        # Adapt category queries for fuses
+        valid_fuses = self.repository.query_images(category=ImageCategory.VALID_METER)  # Or create VALID_FUSE category
+        examples['valid_fuses'] = valid_fuses[:max_examples]
+        
+        return examples
+    
+    def _retrieve_plug_meter_examples(self, max_examples: int) -> Dict[str, List[ReferenceImage]]:
+        """Retrieve examples for plug-in meter removal."""
+        examples = {
+            'with_device': [],
+            'without_device': []
+        }
+        
+        # Customize for plug meter specific categories
+        return examples
+    
+    def _retrieve_default_examples(self, max_examples: int) -> Dict[str, List[ReferenceImage]]:
+        """Default retrieval for unknown SOR types."""
+        return {}
+    
+    # Keep the original method for backward compatibility
+    def retrieve_for_meter_consolidation(self, max_examples: int = None) -> Dict[str, List[ReferenceImage]]:
+        return self.retrieve_for_sor_type("MeterConsolidationE4", max_examples)

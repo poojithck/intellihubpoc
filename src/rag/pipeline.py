@@ -16,12 +16,15 @@ class RAGPipeline:
         # Load RAG configuration
         self.rag_config = self._load_rag_config()
         
-        # Initialize components
-        self.repository = ReferenceImageRepository(
-            self.rag_config.get('repository_path', 'data/reference_images')
-        )
-        self.retriever = ImageRetriever(self.repository, self.rag_config)
+        # Store per-SOR repositories
+        self.repositories: Dict[str, ReferenceImageRepository] = {}
+        self.retrievers: Dict[str, ImageRetriever] = {}
+        
+        # Single augmentor for all SOR types
         self.augmentor = PromptAugmentor(self.rag_config)
+        
+        # Initialize repositories for configured SOR types
+        self._initialize_sor_repositories()
     
     def _load_rag_config(self) -> Dict[str, Any]:
         try:
@@ -36,8 +39,31 @@ class RAGPipeline:
                     'max_width': 800,
                     'max_height': 800,
                     'quality': 85
-                }
+                },
+                'enabled_sor_types': ['MeterConsolidationE4']  # List of SOR types with RAG
             }
+    
+    def _initialize_sor_repositories(self):
+        """Initialize repositories for each configured SOR type."""
+        enabled_sors = self.rag_config.get('enabled_sor_types', ['MeterConsolidationE4'])
+        base_path = self.rag_config.get('repository_path', 'data/reference_images')
+        
+        for sor_type in enabled_sors:
+            # Create dedicated repository for this SOR type
+            repository = ReferenceImageRepository(
+                base_path=base_path,
+                sor_type=sor_type
+            )
+            self.repositories[sor_type] = repository
+            
+            # Create dedicated retriever
+            self.retrievers[sor_type] = ImageRetriever(repository, self.rag_config)
+            
+            self.logger.info(f"Initialized RAG repository for {sor_type} with {len(repository.images)} images")
+    
+    def get_repository(self, sor_type: str) -> Optional[ReferenceImageRepository]:
+        """Get repository for a specific SOR type."""
+        return self.repositories.get(sor_type)
     
     def enhance_sor_analysis(
         self,
@@ -50,16 +76,25 @@ class RAGPipeline:
             self.logger.info("RAG pipeline disabled")
             return prompt_config, work_order_images
         
-        if sor_type != "MeterConsolidationE4":
+        # Check if this SOR type has RAG enabled
+        if sor_type not in self.repositories:
             self.logger.info(f"RAG not configured for {sor_type}")
             return prompt_config, work_order_images
         
         self.logger.info(f"Enhancing {sor_type} analysis with RAG pipeline")
         
+        # Get the specific retriever for this SOR type
+        retriever = self.retrievers[sor_type]
+        
         # Retrieve relevant reference images
-        reference_images = self.retriever.retrieve_for_meter_consolidation(
+        reference_images = retriever.retrieve_for_sor_type(
+            sor_type=sor_type,
             max_examples=self.rag_config.get('max_reference_images', 3)
         )
+        
+        # Log retrieval results
+        total_refs = sum(len(imgs) for imgs in reference_images.values())
+        self.logger.info(f"Retrieved {total_refs} reference images for {sor_type}")
         
         # Augment the prompts
         base_system_prompt = prompt_config.get('system_prompt', '')
@@ -86,10 +121,17 @@ class RAGPipeline:
         self,
         image_path: str,
         category: str,
+        sor_type: str,
         image_id: Optional[str] = None
     ) -> ReferenceImage:
+        """Add a reference image to a specific SOR repository."""
         
-        # Create simple metadata with just category
+        if sor_type not in self.repositories:
+            raise ValueError(f"No repository initialized for SOR type: {sor_type}")
+        
+        repository = self.repositories[sor_type]
+        
+        # Create metadata
         image_metadata = ImageMetadata(
             category=ImageCategory(category),
             confidence_score=1.0
@@ -102,15 +144,26 @@ class RAGPipeline:
             'quality': 85
         })
         
-        return self.repository.add_image(
+        return repository.add_image(
             image_path,
             image_metadata,
             image_id,
             resize_config
         )
     
-    def get_statistics(self) -> Dict[str, Any]:
-        all_images = self.repository.get_all_images()
+    def get_statistics(self, sor_type: Optional[str] = None) -> Dict[str, Any]:
+        """Get statistics for a specific SOR type or all."""
+        if sor_type:
+            if sor_type not in self.repositories:
+                return {'error': f'No repository for {sor_type}'}
+            
+            repository = self.repositories[sor_type]
+            all_images = repository.get_all_images()
+        else:
+            # Aggregate all repositories
+            all_images = []
+            for repository in self.repositories.values():
+                all_images.extend(repository.get_all_images())
         
         stats = {
             'total_images': len(all_images),
@@ -123,5 +176,8 @@ class RAGPipeline:
                 stats['valid_meters'] += 1
             elif img.metadata.category == ImageCategory.NOT_A_METER:
                 stats['not_meters'] += 1
+        
+        if not sor_type:
+            stats['repositories'] = list(self.repositories.keys())
         
         return stats

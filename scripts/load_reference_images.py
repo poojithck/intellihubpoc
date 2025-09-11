@@ -14,7 +14,11 @@ from src.utils import setup_logging
 
 def main():
     parser = argparse.ArgumentParser(description="Load reference images into RAG repository")
-    parser.add_argument("--image-dir", default="data/reference_images", help="Directory containing reference images")
+    parser.add_argument("--sor-type", required=True, 
+                       choices=["MeterConsolidationE4", "FuseReplacement", "PlugInMeterRemoval", 
+                               "ServiceProtectionDevices", "SwitchInstallation", "NeutralLinkInstallation",
+                               "AsbestosBagAndBoard", "CertificateOfCompliance"],
+                       help="SOR type to load images for")
     parser.add_argument("--clear", action="store_true", help="Clear existing repository before loading")
     args = parser.parse_args()
     
@@ -23,18 +27,24 @@ def main():
     setup_logging(config_manager)
     rag_pipeline = RAGPipeline(config_manager)
     
+    # Get repository for the specified SOR type
+    repository = rag_pipeline.get_repository(args.sor_type)
+    if not repository:
+        print(f"Error: No repository configured for {args.sor_type}")
+        sys.exit(1)
+    
     # Clear repository if requested
     if args.clear:
-        print("Clearing existing repository...")
-        for image_id in list(rag_pipeline.repository.images.keys()):
-            rag_pipeline.repository.remove_image(image_id)
+        print(f"Clearing existing repository for {args.sor_type}...")
+        for image_id in list(repository.images.keys()):
+            repository.remove_image(image_id)
     
-    # Load metadata
-    image_dir = Path(args.image_dir)
-    metadata_file = image_dir / "metadata.json"
+    # Load metadata from the SOR-specific directory
+    metadata_file = repository.working_path / "metadata.json"
     
     if not metadata_file.exists():
-        print(f"Error: metadata.json not found in {image_dir}")
+        print(f"Error: metadata.json not found in {repository.working_path}")
+        print(f"Please create {metadata_file} with image metadata")
         sys.exit(1)
     
     with open(metadata_file, 'r') as f:
@@ -47,7 +57,7 @@ def main():
         # Try different extensions
         image_file = None
         for ext in ['.jpg', '.jpeg', '.png', '.bmp']:
-            candidate = image_dir / f"{filename_key}{ext}"
+            candidate = repository.working_path / f"{filename_key}{ext}"
             if candidate.exists():
                 image_file = candidate
                 break
@@ -57,6 +67,7 @@ def main():
             ref_image = rag_pipeline.add_reference_image(
                 str(image_file),
                 category=category,
+                sor_type=args.sor_type,
                 image_id=filename_key
             )
             print(f"Added: {ref_image.id} ({category}) - {image_file.name}")
@@ -65,9 +76,9 @@ def main():
             print(f"Warning: No image file found for {filename_key}")
     
     # Print statistics
-    print(f"\nLoaded {loaded_count} reference images")
-    stats = rag_pipeline.get_statistics()
-    print("\nRepository Statistics:")
+    print(f"\nLoaded {loaded_count} reference images for {args.sor_type}")
+    stats = rag_pipeline.get_statistics(args.sor_type)
+    print(f"\nRepository Statistics for {args.sor_type}:")
     print(f"  Total images: {stats['total_images']}")
     print(f"  Valid meters: {stats['valid_meters']}")
     print(f"  Not meters: {stats['not_meters']}")

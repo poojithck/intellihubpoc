@@ -10,17 +10,50 @@ from .models import ReferenceImage, ImageMetadata, ImageCategory
 
 
 class ReferenceImageRepository:
-    def __init__(self, base_path: str = "data/reference_images", index_file: str = "index.json"):
+    def __init__(self, base_path: str = "data/reference_images", 
+                 sor_type: Optional[str] = None,
+                 index_file: str = "index.json"):
+        """
+        Initialize repository for a specific SOR type or general use.
+        
+        Args:
+            base_path: Base directory for reference images
+            sor_type: Optional SOR type for dedicated repository
+            index_file: Name of the index file
+        """
         self.base_path = Path(base_path)
-        self.index_file = self.base_path / index_file
+        self.sor_type = sor_type
+        
+        # If SOR type specified, use dedicated subdirectory
+        if sor_type:
+            # Convert SOR type to folder name (e.g., MeterConsolidationE4 -> meter_consolidation)
+            folder_name = self._sor_to_folder_name(sor_type)
+            self.working_path = self.base_path / folder_name
+        else:
+            self.working_path = self.base_path
+            
+        self.index_file = self.working_path / index_file
         self.logger = logging.getLogger(__name__)
         self.images: Dict[str, ReferenceImage] = {}
         self._ensure_directories()
         self._load_index()
     
+    def _sor_to_folder_name(self, sor_type: str) -> str:
+        """Convert SOR type to folder name."""
+        mapping = {
+            "MeterConsolidationE4": "meter_consolidation",
+            "FuseReplacement": "fuse_replacement",
+            "PlugInMeterRemoval": "plug_in_meter",
+            "ServiceProtectionDevices": "service_protection",
+            "SwitchInstallation": "switch_installation",
+            "NeutralLinkInstallation": "neutral_link",
+            "AsbestosBagAndBoard": "asbestos",
+            "CertificateOfCompliance": "certificate"
+        }
+        return mapping.get(sor_type, sor_type.lower())
+    
     def _ensure_directories(self):
-        self.base_path.mkdir(parents=True, exist_ok=True)
-        (self.base_path / "meter_consolidation").mkdir(exist_ok=True)
+        self.working_path.mkdir(parents=True, exist_ok=True)
     
     def _load_index(self):
         if self.index_file.exists():
@@ -30,12 +63,12 @@ class ReferenceImageRepository:
                     for image_data in data.get('images', []):
                         ref_image = ReferenceImage.from_dict(image_data)
                         self.images[ref_image.id] = ref_image
-                self.logger.info(f"Loaded {len(self.images)} reference images from index")
+                self.logger.info(f"Loaded {len(self.images)} reference images from {self.index_file}")
             except Exception as e:
                 self.logger.error(f"Failed to load index: {e}")
                 self.images = {}
         else:
-            self.logger.info("No existing index found, starting with empty repository")
+            self.logger.info(f"No existing index found at {self.index_file}, starting with empty repository")
     
     def save_index(self):
         index_data = {
