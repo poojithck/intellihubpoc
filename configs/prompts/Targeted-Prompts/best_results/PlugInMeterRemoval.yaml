@@ -13,6 +13,16 @@ PlugInMeterRemoval:
       - Pick earliest and latest full-board images
       - Count plug-in devices ONLY when both the black plate AND the device body are present
       - meters_removed = true if final_count < init_count
+      - CRITICAL CONFIDENCE ASSESSMENT:
+        Assign a confidence_score (0-100):
+        - 90-100: Black plates and devices crystal clear, no ambiguity
+        - 70-89: Good visibility of plates/devices with minor uncertainties  
+        - 50-69: Moderate visibility, some ambiguity in identification
+        - 30-49: Poor visibility, significant uncertainty
+        - 0-29: Very poor quality, mostly guessing
+        
+        BE STRICT: High confidence (>80) only when certain about EVERY device.
+        Reduce score for: partial visibility, shadows, unclear mounting plates.
       - Provide brief (≤25 words) notes
 
     Return EXACTLY this JSON (no extra keys, no markdown):
@@ -20,6 +30,7 @@ PlugInMeterRemoval:
       "init_count": <integer>,
       "final_count": <integer>,
       "meters_removed": <true|false>,
+      "confidence_score": <integer 0-100>,
       "notes": "<≤25 words>"
     }
 
@@ -28,8 +39,7 @@ PlugInMeterRemoval:
     negative: ["no change", "same number", "unchanged", "no removal", "unknown"]
 
   response_format:
-    required_fields: ["init_count", "final_count", "meters_removed", "notes"]
-
+    required_fields: ["init_count", "final_count", "consolidation", "confidence_score", "notes"]
   model_config: "analysis"
 
 

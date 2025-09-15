@@ -13,6 +13,17 @@ FuseReplacement:
       3. Ignore holders, busbars, terminals, empty clips, breakers, and any object without a visible barrel.
       4. Determine if the final count is even or odd.
       5. Set valid_claim = true if a suitable fuse_image was found AND the fuse_count is EVEN.
+      6. CRITICAL CONFIDENCE ASSESSMENT:
+        Assign a confidence_score (0-100) based on:
+        - 90-100: Crystal clear image quality, all fuses perfectly visible with labels/markings clearly readable
+        - 70-89: Good visibility, most fuses clearly identifiable but some minor ambiguity
+        - 50-69: Moderate visibility, some fuses partially obscured or unclear
+        - 30-49: Poor visibility, significant ambiguity in counting
+        - 0-29: Very poor quality, mostly guessing
+        
+        BE STRICT: Only assign high scores (>80) when you are ABSOLUTELY CERTAIN of your count.
+        If there's ANY doubt about even ONE fuse, reduce the score accordingly.
+        Default to lower confidence when uncertain - it's better to underscore than overscore.
 
     Return EXACTLY this JSON (no extra keys, no markdown):
     {
@@ -20,6 +31,7 @@ FuseReplacement:
       "fuse_count": <integer_total_number_of_fuses>,
       "is_even_count": <true|false>,
       "valid_claim": <true|false>,
+      "confidence_score": <integer 0-100>,
       "notes": "<brief (≤25 words) justification mentioning key visual evidence>"
     }
 
@@ -28,7 +40,7 @@ FuseReplacement:
     negative: ["no fuses", "odd count", "invalid claim", "unclear", "missing", "unknown", "holder only", "empty holder"]
 
   response_format:
-    required_fields: ["fuse_image", "fuse_count", "is_even_count", "valid_claim", "notes"]
+    required_fields: ["init_count", "final_count", "consolidation", "confidence_score", "notes"]
 
   model_config: "analysis"
 

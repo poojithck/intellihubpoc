@@ -52,15 +52,21 @@ class ImageRetriever:
     
     def _retrieve_fuse_examples(self, max_examples: int) -> Dict[str, List[ReferenceImage]]:
         """Retrieve examples for fuse replacement."""
-        # Customize for fuse-specific categories if needed
         examples = {
             'valid_fuses': [],
-            'invalid_fuses': []
+            'not_valid_fuses': []  # Changed from 'invalid_fuses' to match your naming
         }
         
-        # Adapt category queries for fuses
-        valid_fuses = self.repository.query_images(category=ImageCategory.VALID_METER)  # Or create VALID_FUSE category
+        # Get valid fuse examples
+        valid_fuses = self.repository.query_images(category=ImageCategory.VALID_METER)
         examples['valid_fuses'] = valid_fuses[:max_examples]
+        
+        # Get NOT valid fuse examples (if any exist)
+        not_valid_fuses = self.repository.query_images(category=ImageCategory.NOT_A_METER)
+        examples['not_valid_fuses'] = not_valid_fuses[:max_examples]
+        
+        total = len(examples['valid_fuses']) + len(examples['not_valid_fuses'])
+        self.logger.info(f"Retrieved {total} reference images ({len(examples['valid_fuses'])} valid, {len(examples['not_valid_fuses'])} not valid)")
         
         return examples
     

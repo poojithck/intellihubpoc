@@ -27,6 +27,17 @@ MeterConsolidationE4:
       - Pick earliest and latest full-board images
       - Count ONLY actual meters (see criteria and distinctions above)
       - consolidation = true if init_count > final_count
+      - CRITICAL CONFIDENCE ASSESSMENT:
+        Assign a confidence_score (0-100) based on:
+        - 90-100: Both images crystal clear, all meters unambiguously identifiable with visible registers
+        - 70-89: Good visibility, most meters clearly visible but minor uncertainties
+        - 50-69: Moderate visibility, some meters partially obscured or ambiguous
+        - 30-49: Poor visibility, significant counting challenges
+        - 0-29: Very poor quality, mostly guessing
+        
+        BE STRICT: Only assign high scores (>80) when ABSOLUTELY CERTAIN of both counts.
+        Consider: image quality, meter visibility, register readability, and any ambiguous devices.
+        When in doubt, assign LOWER confidence - underscore rather than overscore.
       - Provide brief (≤25 words) notes
 
     Return EXACTLY this JSON (no extra keys, no markdown):
@@ -34,6 +45,7 @@ MeterConsolidationE4:
       "init_count": <integer>,
       "final_count": <integer>,
       "consolidation": <true|false>,
+      "confidence_score": <integer 0-100>,
       "notes": "<≤25 words>"
     }
 
@@ -42,7 +54,7 @@ MeterConsolidationE4:
     negative: ["no change", "same number", "unchanged", "no consolidation", "unknown"]
 
   response_format:
-    required_fields: ["init_count", "final_count", "consolidation", "notes"]
+    required_fields: ["init_count", "final_count", "consolidation", "confidence_score", "notes"]
 
   model_config: "analysis"
 

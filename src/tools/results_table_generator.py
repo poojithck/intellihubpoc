@@ -98,6 +98,7 @@ class ResultsTableGenerator:
                 # Add error row
                 for sor_type in sor_types:
                     row_data[f"{sor_type}_Status"] = "ERROR"
+                    row_data[f"{sor_type}_Confidence"] = 0  # Add confidence as 0 for errors
                     row_data[f"{sor_type}_Notes"] = work_order_result["error"]
                 table_data.append(row_data)
                 continue
@@ -111,6 +112,7 @@ class ResultsTableGenerator:
                 # Check if SOR analysis failed
                 if "error" in sor_result:
                     row_data[f"{sor_type}_Status"] = "ERROR"
+                    row_data[f"{sor_type}_Confidence"] = 0  # Add confidence as 0 for errors
                     row_data[f"{sor_type}_Notes"] = sor_result["error"]
                     continue
                 
@@ -120,9 +122,22 @@ class ResultsTableGenerator:
                     status = sor_result[boolean_field]
                     row_data[f"{sor_type}_Status"] = "PASS" if status else "FAIL"
                 else:
-                    # If boolean field is missing, treat as FAIL since "unknown" is not allowed in our prompts
+                    # If boolean field is missing, treat as FAIL
                     row_data[f"{sor_type}_Status"] = "FAIL"
                     self.logger.warning(f"Missing boolean field '{boolean_field}' for {sor_type} in work order {work_order_number}, treating as FAIL")
+                
+                # Extract confidence score - SPECIAL HANDLING
+                confidence_score = sor_result.get("confidence_score", 0)
+                row_data[f"{sor_type}_Confidence"] = confidence_score
+                
+                # Add confidence level indicator (High/Medium/Low)
+                if confidence_score >= 80:
+                    confidence_level = "HIGH"
+                elif confidence_score >= 60:
+                    confidence_level = "MEDIUM"
+                else:
+                    confidence_level = "LOW"
+                row_data[f"{sor_type}_Conf_Level"] = confidence_level
                 
                 # Extract notes
                 notes_field = self.table_config["notes_fields"].get(sor_type)
@@ -131,9 +146,11 @@ class ResultsTableGenerator:
                 else:
                     row_data[f"{sor_type}_Notes"] = ""
                 
-                # Extract additional fields
+                # Extract additional fields (but skip confidence_score as we handled it)
                 additional_fields = self.table_config["additional_fields"].get(sor_type, [])
                 for field in additional_fields:
+                    if field == "confidence_score":
+                        continue  # Already handled above
                     if field in sor_result:
                         row_data[f"{sor_type}_{field}"] = str(sor_result[field])
                     else:
@@ -161,11 +178,44 @@ class ResultsTableGenerator:
         if self.table_config["sort_by_work_order"] and not df.empty:
             df = df.sort_values("Work_Order")
         
+        # Reorder columns to group by SOR type
+        if not df.empty:
+            ordered_columns = ["Work_Order"]
+            for sor_type in sor_types:
+                # Order: Status, Confidence, Conf_Level, additional fields, Notes
+                if f"{sor_type}_Status" in df.columns:
+                    ordered_columns.append(f"{sor_type}_Status")
+                if f"{sor_type}_Confidence" in df.columns:
+                    ordered_columns.append(f"{sor_type}_Confidence")
+                if f"{sor_type}_Conf_Level" in df.columns:
+                    ordered_columns.append(f"{sor_type}_Conf_Level")
+                
+                # Add additional fields
+                additional_fields = self.table_config["additional_fields"].get(sor_type, [])
+                for field in additional_fields:
+                    if field != "confidence_score" and f"{sor_type}_{field}" in df.columns:
+                        ordered_columns.append(f"{sor_type}_{field}")
+                
+                if f"{sor_type}_Notes" in df.columns:
+                    ordered_columns.append(f"{sor_type}_Notes")
+            
+            # Add metadata columns at the end
+            for col in df.columns:
+                if col not in ordered_columns:
+                    ordered_columns.append(col)
+            
+            df = df[ordered_columns]
+        
         # Log summary of extracted fields
         if not df.empty:
-            sor_columns = [col for col in df.columns if any(sor_type in col for sor_type in sor_types)]
             self.logger.info(f"Generated table with {len(df)} work orders and {len(df.columns)} columns")
-            self.logger.info(f"SOR-related columns: {sor_columns}")
+            
+            # Calculate and log average confidence scores
+            for sor_type in sor_types:
+                conf_col = f"{sor_type}_Confidence"
+                if conf_col in df.columns:
+                    avg_conf = df[conf_col].mean()
+                    self.logger.info(f"Average confidence for {sor_type}: {avg_conf:.1f}")
         else:
             self.logger.warning("Generated empty table")
         
@@ -230,14 +280,33 @@ class ResultsTableGenerator:
         
         for sor_type in sor_types:
             status_col = f"{sor_type}_Status"
+            conf_col = f"{sor_type}_Confidence"
+            
             if status_col in df.columns:
                 status_counts = df[status_col].value_counts()
-                summary["sor_results"][sor_type] = {
+                sor_summary = {
                     "pass": int(status_counts.get("PASS", 0)),
                     "fail": int(status_counts.get("FAIL", 0)),
                     "error": int(status_counts.get("ERROR", 0)),
                     "unknown": int(status_counts.get("UNKNOWN", 0))
                 }
+                
+                # Add confidence statistics
+                if conf_col in df.columns:
+                    # Filter out error rows (confidence = 0)
+                    valid_conf = df[df[status_col] != "ERROR"][conf_col] if len(df[df[status_col] != "ERROR"]) > 0 else df[conf_col]
+                    
+                    if len(valid_conf) > 0:
+                        sor_summary["confidence_stats"] = {
+                            "average": float(valid_conf.mean()),
+                            "min": float(valid_conf.min()),
+                            "max": float(valid_conf.max()),
+                            "high_confidence_count": int((valid_conf >= 80).sum()),
+                            "medium_confidence_count": int(((valid_conf >= 60) & (valid_conf < 80)).sum()),
+                            "low_confidence_count": int((valid_conf < 60).sum())
+                        }
+                
+                summary["sor_results"][sor_type] = sor_summary
         
         # Add metadata if available
         if "Total_Cost" in df.columns:

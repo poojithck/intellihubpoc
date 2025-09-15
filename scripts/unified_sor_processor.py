@@ -196,7 +196,7 @@ class UnifiedSORProcessor:
         model_params = self.model_params
 
         # Initialize RAG pipeline if needed for MeterConsolidationE4
-        if sor_type == "MeterConsolidationE4":
+        if sor_type in ["MeterConsolidationE4", "FuseReplacement"]:
             try:
                 from src.rag.pipeline import RAGPipeline
                 rag_pipeline = RAGPipeline(self.config_manager)
@@ -628,7 +628,7 @@ class UnifiedSORProcessor:
         }
     
     def _create_batch_summary(self, work_orders: List[Dict[str, Any]], 
-                            results: Dict[str, Any], sor_types: List[str]) -> Dict[str, Any]:
+                        results: Dict[str, Any], sor_types: List[str]) -> Dict[str, Any]:
         """Create comprehensive batch summary."""
         total_work_orders = len(work_orders)
         successful_work_orders = len([r for r in results.values() 
@@ -648,6 +648,7 @@ class UnifiedSORProcessor:
             pass_count = 0
             fail_count = 0
             error_count = 0
+            confidence_scores = []
             
             # Get the correct boolean field name for this SOR type
             boolean_field = boolean_field_config.get(sor_type)
@@ -656,31 +657,46 @@ class UnifiedSORProcessor:
                 sor_result = work_order_result.get("sor_results", {}).get(sor_type, {})
                 if "error" in sor_result:
                     error_count += 1
-                elif boolean_field and sor_result.get(boolean_field):
-                    # Check if the boolean field exists and is truthy
-                    boolean_value = sor_result.get(boolean_field)
-                    if isinstance(boolean_value, bool):
-                        if boolean_value:
-                            pass_count += 1
-                        else:
-                            fail_count += 1
-                    elif isinstance(boolean_value, str):
-                        # Handle string boolean values like "PASS", "FAIL", "True", "False"
-                        if boolean_value.upper() in ["PASS", "TRUE", "YES", "1"]:
-                            pass_count += 1
+                else:
+                    # Collect confidence score
+                    if "confidence_score" in sor_result:
+                        confidence_scores.append(sor_result["confidence_score"])
+                    
+                    # Check pass/fail
+                    if boolean_field and sor_result.get(boolean_field):
+                        boolean_value = sor_result.get(boolean_field)
+                        if isinstance(boolean_value, bool):
+                            if boolean_value:
+                                pass_count += 1
+                            else:
+                                fail_count += 1
+                        elif isinstance(boolean_value, str):
+                            if boolean_value.upper() in ["PASS", "TRUE", "YES", "1"]:
+                                pass_count += 1
+                            else:
+                                fail_count += 1
                         else:
                             fail_count += 1
                     else:
-                        # If boolean field exists but isn't recognizable, count as fail
                         fail_count += 1
-                else:
-                    # If no boolean field configured or field not found, count as fail
-                    fail_count += 1
+            
+            # Calculate confidence statistics
+            confidence_stats = {}
+            if confidence_scores:
+                confidence_stats = {
+                    "average": sum(confidence_scores) / len(confidence_scores),
+                    "min": min(confidence_scores),
+                    "max": max(confidence_scores),
+                    "high_confidence": sum(1 for s in confidence_scores if s >= 80),
+                    "medium_confidence": sum(1 for s in confidence_scores if 60 <= s < 80),
+                    "low_confidence": sum(1 for s in confidence_scores if s < 60)
+                }
             
             sor_statistics[sor_type] = {
                 "pass": pass_count,
                 "fail": fail_count,
-                "error": error_count
+                "error": error_count,
+                "confidence_stats": confidence_stats
             }
         
         # Add batch configuration metadata

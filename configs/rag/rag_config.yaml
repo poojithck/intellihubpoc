@@ -1,10 +1,11 @@
 enabled: true
 repository_path: 'data/reference_images'
-max_reference_images: 20
+max_reference_images: 50
 
 # List of SOR types that have RAG enabled
 enabled_sor_types:
-  #- MeterConsolidationE4
+  - MeterConsolidationE4
+  - FuseReplacement
   # Add more as you implement them:
   # - FuseReplacement
   # - PlugInMeterRemoval

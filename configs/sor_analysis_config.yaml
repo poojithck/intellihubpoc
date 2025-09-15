@@ -42,6 +42,7 @@ sor_analysis:
         - "fuse_count"
         - "is_even_count"
         - "valid_claim"
+        - "confidence_score"
         - "notes"
         
     MeterConsolidationE4:
@@ -52,6 +53,7 @@ sor_analysis:
         - "init_count"
         - "final_count"
         - "consolidation"
+        - "confidence_score"
         - "notes"
         
     PlugInMeterRemoval:
@@ -62,6 +64,7 @@ sor_analysis:
         - "init_count"
         - "final_count"
         - "meters_removed"
+        - "confidence_score"
         - "notes"
         
     ServiceProtectionDevices:
@@ -184,12 +187,12 @@ sor_analysis:
     additional_fields:
       AsbestosBagAndBoard: ["National_Meter_Identifier", "Date_On_Bag"]
       CertificateOfCompliance: ["Electrical_Work_Present"]
-      FuseReplacement: ["fuse_count", "is_even_count"]
-      MeterConsolidationE4: ["init_count", "final_count"]
-      PlugInMeterRemoval: ["init_count", "final_count"]
-      ServiceProtectionDevices: ["init_count", "final_count"]
-      SwitchInstallation: ["switch_count"]
-      NeutralLinkInstallation: ["init_count", "final_count"]
+      FuseReplacement: ["fuse_count", "is_even_count", "confidence_score"]
+      MeterConsolidationE4: ["init_count", "final_count", "confidence_score"]
+      PlugInMeterRemoval: ["init_count", "final_count", "confidence_score"]
+      ServiceProtectionDevices: ["init_count", "final_count", "confidence_score"]
+      SwitchInstallation: ["switch_count", "confidence_score"]
+      NeutralLinkInstallation: ["init_count", "final_count", "confidence_score"]
       meter_reading: ["possible_values", "meter_type", "confidence"]
     output_formats: ["csv", "excel"]
     include_metadata: true
