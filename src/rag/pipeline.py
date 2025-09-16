@@ -153,6 +153,9 @@ class RAGPipeline:
     
     def get_statistics(self, sor_type: Optional[str] = None) -> Dict[str, Any]:
         """Get statistics for a specific SOR type or all."""
+        # Import the enum here to access the categories
+        from .models import ImageCategory
+        
         if sor_type:
             if sor_type not in self.repositories:
                 return {'error': f'No repository for {sor_type}'}
@@ -168,7 +171,9 @@ class RAGPipeline:
         stats = {
             'total_images': len(all_images),
             'valid_meters': 0,
-            'not_meters': 0
+            'not_meters': 0,
+            'valid_fuses': 0,
+            'not_valid_fuses': 0
         }
         
         for img in all_images:
@@ -176,6 +181,10 @@ class RAGPipeline:
                 stats['valid_meters'] += 1
             elif img.metadata.category == ImageCategory.NOT_A_METER:
                 stats['not_meters'] += 1
+            elif img.metadata.category == ImageCategory.VALID_FUSE:
+                stats['valid_fuses'] += 1
+            elif img.metadata.category == ImageCategory.NOT_VALID_FUSE:
+                stats['not_valid_fuses'] += 1
         
         if not sor_type:
             stats['repositories'] = list(self.repositories.keys())

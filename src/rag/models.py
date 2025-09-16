@@ -6,8 +6,17 @@ from pathlib import Path
 
 
 class ImageCategory(Enum):
+    # Meter-related categories
     VALID_METER = "valid_meter"
     NOT_A_METER = "not_a_meter"
+    
+    # Fuse-related categories
+    VALID_FUSE = "valid_fuse"
+    NOT_VALID_FUSE = "not_valid_fuse"
+    
+    # Add more categories as needed for other SOR types
+    # PLUG_IN_WITH_DEVICE = "plug_in_with_device"
+    # PLUG_IN_WITHOUT_DEVICE = "plug_in_without_device"
 
 
 @dataclass

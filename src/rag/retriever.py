@@ -50,19 +50,26 @@ class ImageRetriever:
         
         return examples
     
+    from .models import ReferenceImage, ImageCategory
+
+# ... rest of the code ...
+
     def _retrieve_fuse_examples(self, max_examples: int) -> Dict[str, List[ReferenceImage]]:
         """Retrieve examples for fuse replacement."""
         examples = {
             'valid_fuses': [],
-            'not_valid_fuses': []  # Changed from 'invalid_fuses' to match your naming
+            'not_valid_fuses': []
         }
         
-        # Get valid fuse examples
-        valid_fuses = self.repository.query_images(category=ImageCategory.VALID_METER)
+        # Import ImageCategory if not already imported
+        from .models import ImageCategory
+        
+        # Get valid fuse examples - use VALID_FUSE category
+        valid_fuses = self.repository.query_images(category=ImageCategory.VALID_FUSE)
         examples['valid_fuses'] = valid_fuses[:max_examples]
         
-        # Get NOT valid fuse examples (if any exist)
-        not_valid_fuses = self.repository.query_images(category=ImageCategory.NOT_A_METER)
+        # Get NOT valid fuse examples - use NOT_VALID_FUSE category  
+        not_valid_fuses = self.repository.query_images(category=ImageCategory.NOT_VALID_FUSE)
         examples['not_valid_fuses'] = not_valid_fuses[:max_examples]
         
         total = len(examples['valid_fuses']) + len(examples['not_valid_fuses'])
