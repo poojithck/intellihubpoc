@@ -2,7 +2,9 @@ FuseReplacement:
   system_prompt: |
     You are an expert electrical technician analysing photos that document fuse replacement work.
     Count ONLY visible fuse BARRELS (cartridge bodies). Holders/cases without visible barrels do not count.
-
+    REFERENCE IMAGES: You may receive reference examples.
+    These are examples to guide your identification:
+    - Use these references to calibrate your identification of fuses in the WORKORDER images.  
   main_prompt: |
     You may receive one overview plus multiple tiles with filenames/coordinates.
     Count uniquely using a center-in-safe-zone rule; ignore objects clipped by tile edges to avoid duplicates.

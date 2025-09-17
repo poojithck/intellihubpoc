@@ -89,6 +89,10 @@ class RAGPipeline:
             self.logger.info("RAG pipeline disabled")
             return prompt_config, work_order_images
         
+        if not work_order_images:
+            self.logger.info(f"No work order images provided for {sor_type}, skipping RAG enhancement")
+            return prompt_config, work_order_images
+        
         # Check if this SOR type has RAG enabled
         if sor_type not in self.repositories:
             self.logger.info(f"RAG not configured for {sor_type}")
@@ -118,7 +122,7 @@ class RAGPipeline:
         # Augment the prompts
         base_system_prompt = prompt_config.get('system_prompt', '')
         base_main_prompt = prompt_config.get('main_prompt', '')
-        
+        self.logger.info(f"Base system prompt: {base_system_prompt}")
         augmented_system_prompt, augmented_main_prompt = self.augmentor.augment_prompt(
             base_system_prompt,
             base_main_prompt,

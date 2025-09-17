@@ -5,7 +5,7 @@ max_reference_images: 50  # Can now be higher since we'll grid them
 # List of SOR types that have RAG enabled
 enabled_sor_types:
   - MeterConsolidationE4
-  - FuseReplacement
+  #- FuseReplacement
 
 reference_images:
   max_width: 800

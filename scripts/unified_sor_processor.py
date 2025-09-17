@@ -214,6 +214,7 @@ class UnifiedSORProcessor:
 
         # Compose final prompt: include system + main for clarity (system may contain strict definitions)
         system_prompt = (prompt_config.get("system_prompt") or "").strip()
+        #self.logger.info(f"Base system prompt: {system_prompt}")
         main_prompt = (prompt_config.get("main_prompt") or "").strip()
         prompt_text = (f"{system_prompt}\n\n---\n\n{main_prompt}" if system_prompt else main_prompt).strip()
 
@@ -249,7 +250,8 @@ class UnifiedSORProcessor:
             response = await loop.run_in_executor(
                 executor,
                 lambda: self.bedrock_client.invoke_model_multi_image(
-                    prompt=prompt_text,
+                    prompt=main_prompt,
+                    system_prompt = system_prompt,
                     images=images,
                     max_tokens=model_params.get("max_tokens"),
                     temperature=model_params.get("temperature")

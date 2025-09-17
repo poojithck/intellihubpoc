@@ -92,15 +92,15 @@ class PromptAugmentor:
                     self.logger.warning(f"Failed to add image to grid: {e}")
                     continue
             
-            # Save grid locally
+            # Save grid locally (as PNG to maintain quality)
             grid_name = f"ref_grid_{category}_{grid_idx//images_per_grid:03d}"
-            grid_path = self.grid_cache_dir / f"{grid_name}.jpg"
-            grid_img.save(grid_path, 'JPEG', quality=95)
+            grid_path = self.grid_cache_dir / f"{grid_name}.png"
+            grid_img.save(grid_path, 'PNG', optimize=True)
             self.logger.info(f"Saved reference grid: {grid_path}")
             
-            # Encode grid to base64
+            # Encode grid to base64 (as PNG for reference images)
             buffer = io.BytesIO()
-            grid_img.save(buffer, format='JPEG', quality=95)
+            grid_img.save(buffer, format='PNG', optimize=True)
             buffer.seek(0)
             grid_base64 = base64.b64encode(buffer.read()).decode('utf-8')
             
@@ -114,7 +114,17 @@ class PromptAugmentor:
         base_main_prompt: str,
         reference_images: Dict[str, List[ReferenceImage]]
     ) -> tuple[str, str]:
+        """
+        Augment prompts with reference examples.
         
+        Args:
+            base_system_prompt: Original system prompt
+            base_main_prompt: Original main prompt
+            reference_images: Dictionary of reference images by category
+            
+        Returns:
+            Tuple of (augmented_system_prompt, augmented_main_prompt)
+        """
         self.logger.info("Augmenting system prompt with reference examples")
         
         # Count total reference images
@@ -139,6 +149,112 @@ class PromptAugmentor:
         self.logger.info(f"Added reference examples to system prompt (gridded: {use_gridding})")
         
         return augmented_system_prompt, augmented_main_prompt
+    
+    def combine_images(
+        self,
+        reference_images: Dict[str, List[ReferenceImage]],
+        work_order_images: List[Dict[str, str]]
+    ) -> List[Dict[str, str]]:
+        """
+        Prepare reference images only (work order images are handled by bedrock client).
+        
+        This method prepares reference images (as grids or individual images) and returns
+        them in a format ready for the model. Work order images are NOT included as they
+        are handled separately by the bedrock client.
+        
+        Args:
+            reference_images: Dictionary of reference images by category
+            work_order_images: List of work order images (IGNORED - kept for compatibility)
+            
+        Returns:
+            List of reference images prepared for the model
+        """
+        reference_list = []
+        
+        # Count total reference images
+        total_refs = sum(len(imgs) for imgs in reference_images.values())
+        use_gridding = total_refs > 15
+        
+        if use_gridding:
+            self.logger.info(f"Using gridded approach for {total_refs} reference images")
+            
+            # Create grids for each category
+            for category, images in reference_images.items():
+                if images:
+                    grids = self._create_reference_grid(images, category, images_per_grid=2)
+                    for grid_name, grid_data in grids:
+                        reference_list.append({
+                            'name': f"REFERENCE_GRID_{grid_name}",
+                            'data': grid_data,
+                            'media_type': 'image/png',  # PNG for reference images
+                            'timestamp': None
+                        })
+                    self.logger.info(f"Created {len(grids)} grids for {category}")
+        else:
+            # Use original individual image approach
+            ref_counter = 1
+            
+            # Check if we're dealing with fuses or meters
+            is_fuse_context = 'valid_fuses' in reference_images or 'not_valid_fuses' in reference_images
+            
+            if is_fuse_context:
+                # Add valid fuse examples
+                for img in reference_images.get('valid_fuses', []):
+                    if img.base64_data:
+                        reference_list.append({
+                            'name': f"REFERENCE_{ref_counter:02d}_valid_fuse",
+                            'data': img.base64_data,
+                            'media_type': 'image/png',  # PNG for reference images
+                            'timestamp': None
+                        })
+                        ref_counter += 1
+                
+                # Reset counter for not_valid_fuse examples
+                ref_counter = 1
+                
+                # Add not valid fuse examples
+                for img in reference_images.get('not_valid_fuses', []):
+                    if img.base64_data:
+                        reference_list.append({
+                            'name': f"REFERENCE_{ref_counter:02d}_not_valid_fuse",
+                            'data': img.base64_data,
+                            'media_type': 'image/png',  # PNG for reference images
+                            'timestamp': None
+                        })
+                        ref_counter += 1
+            else:
+                # Handle meter examples
+                for img in reference_images.get('valid_meters', []):
+                    if img.base64_data:
+                        reference_list.append({
+                            'name': f"REFERENCE_{ref_counter:02d}_valid_meter",
+                            'data': img.base64_data,
+                            'media_type': 'image/png',  # PNG for reference images
+                            'timestamp': None
+                        })
+                        ref_counter += 1
+                
+                ref_counter = 1
+                
+                for img in reference_images.get('not_meters', []):
+                    if img.base64_data:
+                        reference_list.append({
+                            'name': f"REFERENCE_{ref_counter:02d}_not_a_meter",
+                            'data': img.base64_data,
+                            'media_type': 'image/png',  # PNG for reference images
+                            'timestamp': None
+                        })
+                        ref_counter += 1
+        
+        # Log summary (NOTE: work_order_images are NOT included)
+        if use_gridding:
+            grid_count = len(reference_list)
+            self.logger.info(f"Prepared {grid_count} reference grids for model")
+        else:
+            self.logger.info(f"Prepared {len(reference_list)} reference images for model")
+        
+        # Return only reference images (work order images handled by bedrock client)
+        return reference_list
     
     def _build_gridded_reference_section(self, reference_images: Dict[str, List[ReferenceImage]]) -> str:
         """Build reference section for gridded images."""
@@ -221,9 +337,9 @@ class PromptAugmentor:
             # Handle fuse examples
             valid_fuses = reference_images.get('valid_fuses', [])
             if valid_fuses:
-                lines.append("\nEXAMPLES OF VALID FUSES (COUNT FUSES RESEMBLING THESE):")
+                lines.append("\nEXAMPLE IMAGES (COUNT THE NUMBER OF FUSES IN PARTS OF THE IMAGE RESEMBLING THESE):")
                 for i, img in enumerate(valid_fuses, 1):
-                    lines.append(f"VALID FUSE Example {i}")
+                    lines.append(f"VALID IMAGE Example {i}")
                     lines.append(f"[Image: REFERENCE_{i:02d}_valid_fuse]")
                     lines.append("")
             
@@ -236,7 +352,7 @@ class PromptAugmentor:
                     lines.append(f"[Image: REFERENCE_{i:02d}_not_valid_fuse]")
                     lines.append("")
         else:
-            # Handle meter examples (existing code)
+            # Handle meter examples
             valid_meters = reference_images.get('valid_meters', [])
             if valid_meters:
                 lines.append("\nEXAMPLES OF VALID METERS (COUNT METERS RESEMBLING THESE):")
@@ -262,108 +378,3 @@ class PromptAugmentor:
         lines.append("=" * 70)
         
         return "\n".join(lines)
-    
-    def combine_images(
-        self,
-        reference_images: Dict[str, List[ReferenceImage]],
-        work_order_images: List[Dict[str, str]]
-    ) -> List[Dict[str, str]]:
-        
-        combined = []
-        
-        # Count total reference images
-        total_refs = sum(len(imgs) for imgs in reference_images.values())
-        use_gridding = total_refs > 15
-        
-        if use_gridding:
-            self.logger.info(f"Using gridded approach for {total_refs} reference images")
-            
-            # Create grids for each category
-            for category, images in reference_images.items():
-                if images:
-                    grids = self._create_reference_grid(images, category, images_per_grid=2)
-                    for grid_name, grid_data in grids:
-                        combined.append({
-                            'name': f"REFERENCE_GRID_{grid_name}",
-                            'data': grid_data,
-                            'media_type': 'image/jpeg',
-                            'timestamp': None
-                        })
-                    self.logger.info(f"Created {len(grids)} grids for {category}")
-        else:
-            # Use original individual image approach
-            ref_counter = 1
-            
-            # Check if we're dealing with fuses or meters
-            is_fuse_context = 'valid_fuses' in reference_images or 'not_valid_fuses' in reference_images
-            
-            if is_fuse_context:
-                # Add valid fuse examples
-                for img in reference_images.get('valid_fuses', []):
-                    if img.base64_data:
-                        combined.append({
-                            'name': f"REFERENCE_{ref_counter:02d}_valid_fuse",
-                            'data': img.base64_data,
-                            'media_type': 'image/jpeg',
-                            'timestamp': None
-                        })
-                        ref_counter += 1
-                
-                # Reset counter for not_valid_fuse examples
-                ref_counter = 1
-                
-                # Add not valid fuse examples
-                for img in reference_images.get('not_valid_fuses', []):
-                    if img.base64_data:
-                        combined.append({
-                            'name': f"REFERENCE_{ref_counter:02d}_not_valid_fuse",
-                            'data': img.base64_data,
-                            'media_type': 'image/jpeg',
-                            'timestamp': None
-                        })
-                        ref_counter += 1
-            else:
-                # Handle meter examples (existing code)
-                for img in reference_images.get('valid_meters', []):
-                    if img.base64_data:
-                        combined.append({
-                            'name': f"REFERENCE_{ref_counter:02d}_valid_meter",
-                            'data': img.base64_data,
-                            'media_type': 'image/jpeg',
-                            'timestamp': None
-                        })
-                        ref_counter += 1
-                
-                ref_counter = 1
-                
-                for img in reference_images.get('not_meters', []):
-                    if img.base64_data:
-                        combined.append({
-                            'name': f"REFERENCE_{ref_counter:02d}_not_a_meter",
-                            'data': img.base64_data,
-                            'media_type': 'image/jpeg',
-                            'timestamp': None
-                        })
-                        ref_counter += 1
-        
-        # Add work order images
-        for img in work_order_images:
-            combined.append({
-                'name': f"WORKORDER_{img['name']}",
-                'data': img['data'],
-                'media_type': img.get('media_type', 'image/jpeg'),
-                'timestamp': img.get('timestamp')
-            })
-        
-        if use_gridding:
-            grid_count = len([c for c in combined if 'GRID' in c['name']])
-            self.logger.info(f"Combined {grid_count} reference grids + {len(work_order_images)} work order images")
-        else:
-            if is_fuse_context:
-                total_refs = len(reference_images.get('valid_fuses', [])) + len(reference_images.get('not_valid_fuses', []))
-            else:
-                total_refs = len(reference_images.get('valid_meters', [])) + len(reference_images.get('not_meters', []))
-            
-            self.logger.info(f"Combined {total_refs} reference + {len(work_order_images)} work order images")
-        
-        return combined

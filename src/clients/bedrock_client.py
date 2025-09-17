@@ -22,6 +22,7 @@ class BedrockClient:
         """
         self.model_id = model_id
         self.region_name = region_name
+        self.logger = logging.getLogger(__name__)
         
         # Set pricing configuration
         self.pricing_config = pricing_config or {
@@ -75,7 +76,8 @@ class BedrockClient:
         prompt: str, 
         max_tokens: int = 300, 
         temperature: float = 0.7,
-        images: Optional[List[Dict[str, str]]] = None
+        images: Optional[List[Dict[str, str]]] = None,
+        system_prompt: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Invoke the model with the given prompt and optional images.
@@ -85,15 +87,16 @@ class BedrockClient:
             max_tokens: Maximum number of tokens to generate
             temperature: Controls randomness (0.0 = deterministic, 1.0 = very random)
             images: Optional list of image dictionaries with 'name' and 'data' (base64) keys
+            system_prompt: Optional system prompt to set model behavior
             
         Returns:
             Dictionary containing the model response and metadata
         """
         try:
             if images:
-                return self._invoke_multimodal_model(prompt, max_tokens, temperature, images)
+                return self._invoke_multimodal_model(prompt, max_tokens, temperature, images, system_prompt)
             else:
-                return self._invoke_text_model(prompt, max_tokens, temperature)
+                return self._invoke_text_model(prompt, max_tokens, temperature, system_prompt)
         except Exception as e:
             logging.error(f"Failed to invoke model: {str(e)}")
             raise
@@ -103,7 +106,8 @@ class BedrockClient:
         prompt: str, 
         images: List[Dict[str, str]],
         max_tokens: int = 1000, 
-        temperature: float = 0.1
+        temperature: float = 0.1,
+        system_prompt: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Invoke model with multiple images in a single request for comparison analysis.
@@ -113,6 +117,7 @@ class BedrockClient:
             images: List of image dictionaries with 'name', 'data' (base64), and optional 'timestamp' keys
             max_tokens: Maximum number of tokens to generate
             temperature: Controls randomness (0.0 = deterministic, 1.0 = very random)
+            system_prompt: Optional system prompt to set model behavior
             
         Returns:
             Dictionary containing the model response and metadata
@@ -139,7 +144,7 @@ class BedrockClient:
             if not self._is_base64(image_data):
                 image_data = base64.b64encode(image_data.encode()).decode()
             
-            # NUCLEAR OPTION: Check ALL image data for size before sending to AWS
+            # Check image data for size before sending to AWS
             try:
                 encoded_size = len(image_data.encode('utf-8'))
                 encoded_mb = encoded_size / (1024 * 1024)
@@ -175,18 +180,24 @@ class BedrockClient:
                 "text": metadata_text
             })
         
-        # Build request
+        # Build request with optional system prompt
         request_body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": content
-                }
-            ]
         }
+        
+        # Add system prompt if provided
+        if system_prompt and system_prompt.strip():
+            request_body["system"] = system_prompt.strip()
+        
+        # Add messages
+        request_body["messages"] = [
+            {
+                "role": "user",
+                "content": content
+            }
+        ]
         
         response = self.client.invoke_model(
             modelId=self.model_id,
@@ -197,19 +208,25 @@ class BedrockClient:
         
         return self._parse_response(response)
     
-    def _invoke_text_model(self, prompt: str, max_tokens: int, temperature: float) -> Dict[str, Any]:
+    def _invoke_text_model(self, prompt: str, max_tokens: int, temperature: float, 
+                          system_prompt: Optional[str] = None) -> Dict[str, Any]:
         """Invoke model with text-only prompt."""
         request_body = {
             "anthropic_version": "bedrock-2023-05-31",
             "max_tokens": max_tokens,
             "temperature": temperature,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": prompt.strip()
-                }
-            ]
         }
+        
+        # Add system prompt if provided
+        if system_prompt and system_prompt.strip():
+            request_body["system"] = system_prompt.strip()
+        
+        request_body["messages"] = [
+            {
+                "role": "user",
+                "content": prompt.strip()
+            }
+        ]
         
         response = self.client.invoke_model(
             modelId=self.model_id,
@@ -225,10 +242,11 @@ class BedrockClient:
         prompt: str, 
         max_tokens: int, 
         temperature: float, 
-        images: List[Dict[str, str]]
+        images: List[Dict[str, str]],
+        system_prompt: Optional[str] = None
     ) -> Dict[str, Any]:
         """Invoke model with text and image prompts."""
-        payloads = self._generate_multimodal_payloads(prompt, max_tokens, temperature, images)
+        payloads = self._generate_multimodal_payloads(prompt, max_tokens, temperature, images, system_prompt)
         responses = self._call_model_batch(payloads)
         return self._parse_multimodal_responses(responses)
     
@@ -237,7 +255,8 @@ class BedrockClient:
         prompt: str, 
         max_tokens: int, 
         temperature: float, 
-        images: List[Dict[str, str]]
+        images: List[Dict[str, str]],
+        system_prompt: Optional[str] = None
     ) -> List[Tuple[str, str]]:
         """Generate payloads for multimodal requests."""
         payloads = []
@@ -251,7 +270,7 @@ class BedrockClient:
             if not self._is_base64(image_data):
                 image_data = base64.b64encode(image_data.encode()).decode()
             
-            # NUCLEAR OPTION: Check ALL image data for size before sending to AWS
+            # Check image data for size before sending to AWS
             try:
                 encoded_size = len(image_data.encode('utf-8'))
                 encoded_mb = encoded_size / (1024 * 1024)
@@ -297,8 +316,13 @@ class BedrockClient:
                 "anthropic_version": "bedrock-2023-05-31",
                 "max_tokens": max_tokens,
                 "temperature": temperature,
-                "messages": messages
             }
+            
+            # Add system prompt if provided
+            if system_prompt and system_prompt.strip():
+                request["system"] = system_prompt.strip()
+            
+            request["messages"] = messages
             
             payloads.append((name, json.dumps(request)))
         
@@ -529,7 +553,8 @@ class BedrockClient:
                 "devices_added": ["device", "added", "installed", "true", "pass", "yes"],
                 "meters_removed": ["meter", "removed", "true", "pass", "yes"],
                 "switch_installed": ["switch", "installed", "true", "pass", "yes"],
-                "neutral_link_installed": ["neutral", "link", "installed", "true", "pass", "yes"]
+                "neutral_link_installed": ["neutral", "link", "installed", "true", "pass", "yes"],
+                "consolidation": ["consolidation", "consolidated", "true", "yes"]
             }
             
             text_lower = text.lower()
@@ -542,5 +567,3 @@ class BedrockClient:
             return result
         
         return fallback_parser
-    
-    
