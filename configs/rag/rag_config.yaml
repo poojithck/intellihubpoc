@@ -1,16 +1,25 @@
 enabled: true
 repository_path: 'data/reference_images'
-max_reference_images: 50
+max_reference_images: 50  # Can now be higher since we'll grid them
 
 # List of SOR types that have RAG enabled
 enabled_sor_types:
   - MeterConsolidationE4
   - FuseReplacement
-  # Add more as you implement them:
-  # - FuseReplacement
-  # - PlugInMeterRemoval
 
 reference_images:
   max_width: 800
   max_height: 800
   quality: 85
+
+# Gridding configuration
+gridding:
+  enabled: true
+  threshold: 15  # Grid reference images when count exceeds this
+  images_per_grid: 2  # Number of images per grid
+  grid_width: 1200
+  grid_height: 600
+  border_size: 20
+  background_color: "#FFFFFF"
+  save_grids: true
+  grid_cache_dir: "data/reference_grids"

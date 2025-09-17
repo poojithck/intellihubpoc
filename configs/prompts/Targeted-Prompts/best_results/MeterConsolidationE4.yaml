@@ -15,6 +15,8 @@ MeterConsolidationE4:
     - When uncertain, prefer NOT to count an item as a meter unless an energy register (digits/dials) is clearly visible.
     
     DO NOT COUNT:
+    - **IMPORTANT: Any device that resembles the "NOT A METER" reference examples (if provided) should not be counted**
+    - **Items matching the visual characteristics shown in the NON-METER reference images**
     - Generic plastic enclosures or boxes without meter components
     - Circuit breakers, fuses, or switches (even if labeled)
     - Empty slots or mounting brackets
@@ -57,5 +59,3 @@ MeterConsolidationE4:
     required_fields: ["init_count", "final_count", "consolidation", "confidence_score", "notes"]
 
   model_config: "analysis"
-
-

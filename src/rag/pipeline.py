@@ -20,8 +20,10 @@ class RAGPipeline:
         self.repositories: Dict[str, ReferenceImageRepository] = {}
         self.retrievers: Dict[str, ImageRetriever] = {}
         
-        # Single augmentor for all SOR types
-        self.augmentor = PromptAugmentor(self.rag_config)
+        # Single augmentor for all SOR types with grid configuration
+        grid_config = self.rag_config.get('gridding', {})
+        augmentor_config = {**self.rag_config, **{'gridding': grid_config}}
+        self.augmentor = PromptAugmentor(augmentor_config)
         
         # Initialize repositories for configured SOR types
         self._initialize_sor_repositories()
@@ -34,13 +36,24 @@ class RAGPipeline:
             return {
                 'enabled': True,
                 'repository_path': 'data/reference_images',
-                'max_reference_images': 3,
+                'max_reference_images': 50,
                 'reference_images': {
                     'max_width': 800,
                     'max_height': 800,
                     'quality': 85
                 },
-                'enabled_sor_types': ['MeterConsolidationE4']  # List of SOR types with RAG
+                'enabled_sor_types': ['MeterConsolidationE4', 'FuseReplacement'],
+                'gridding': {
+                    'enabled': True,
+                    'threshold': 15,
+                    'images_per_grid': 2,
+                    'grid_width': 1200,
+                    'grid_height': 600,
+                    'border_size': 20,
+                    'background_color': '#FFFFFF',
+                    'save_grids': True,
+                    'grid_cache_dir': 'data/reference_grids'
+                }
             }
     
     def _initialize_sor_repositories(self):
@@ -86,15 +99,21 @@ class RAGPipeline:
         # Get the specific retriever for this SOR type
         retriever = self.retrievers[sor_type]
         
-        # Retrieve relevant reference images
+        # Retrieve relevant reference images - can now be higher since we'll grid them
+        max_refs = self.rag_config.get('max_reference_images', 50)
         reference_images = retriever.retrieve_for_sor_type(
             sor_type=sor_type,
-            max_examples=self.rag_config.get('max_reference_images', 3)
+            max_examples=max_refs
         )
         
         # Log retrieval results
         total_refs = sum(len(imgs) for imgs in reference_images.values())
         self.logger.info(f"Retrieved {total_refs} reference images for {sor_type}")
+        
+        # Check if gridding will be used
+        grid_threshold = self.rag_config.get('gridding', {}).get('threshold', 15)
+        if total_refs > grid_threshold:
+            self.logger.info(f"Will use gridding for {total_refs} reference images (threshold: {grid_threshold})")
         
         # Augment the prompts
         base_system_prompt = prompt_config.get('system_prompt', '')
@@ -111,9 +130,13 @@ class RAGPipeline:
         enhanced_prompt_config['system_prompt'] = augmented_system_prompt
         enhanced_prompt_config['main_prompt'] = augmented_main_prompt
         enhanced_prompt_config['rag_enhanced'] = True
+        enhanced_prompt_config['reference_count'] = total_refs
+        enhanced_prompt_config['gridded'] = total_refs > grid_threshold
         
-        # Combine images
+        # Combine images (will create grids if needed)
         combined_images = self.augmentor.combine_images(reference_images, work_order_images)
+        
+        self.logger.info(f"Final image count for API call: {len(combined_images)}")
         
         return enhanced_prompt_config, combined_images
     
@@ -173,7 +196,9 @@ class RAGPipeline:
             'valid_meters': 0,
             'not_meters': 0,
             'valid_fuses': 0,
-            'not_valid_fuses': 0
+            'not_valid_fuses': 0,
+            'grid_threshold': self.rag_config.get('gridding', {}).get('threshold', 15),
+            'will_use_gridding': len(all_images) > self.rag_config.get('gridding', {}).get('threshold', 15)
         }
         
         for img in all_images:
