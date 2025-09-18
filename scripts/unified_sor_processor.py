@@ -187,47 +187,65 @@ class UnifiedSORProcessor:
     
 
     
+   # Update the _analyze_sor_type method in UnifiedSORProcessor class
+
     async def _analyze_sor_type(self, sor_type: str, work_order_path: str, 
-                               images: List[Dict[str, str]], work_order_info: Dict[str, Any]) -> Dict[str, Any]:
+                           images: List[Dict[str, str]], work_order_info: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze a single SOR type using provided images (targeted or grids)."""
         
         # Get pre-loaded prompt configuration for this SOR type
         prompt_config = self.prompt_configs[sor_type]
         model_params = self.model_params
 
-        # Initialize RAG pipeline if needed for MeterConsolidationE4
+        # Initialize RAG pipeline if needed for supported SOR types
         if sor_type in ["MeterConsolidationE4", "FuseReplacement"]:
             try:
                 from src.rag.pipeline import RAGPipeline
                 rag_pipeline = RAGPipeline(self.config_manager)
                 
-                # Enhance with RAG
-                prompt_config, images = rag_pipeline.enhance_sor_analysis(
+                # Enhance prompts with RAG - now returns ONLY enhanced prompt config
+                # Work order images are NOT modified
+                prompt_config = rag_pipeline.enhance_sor_analysis(
                     sor_type=sor_type,
                     prompt_config=prompt_config,
-                    work_order_images=images
+                    work_order_images=images  # Passed for context only
                 )
                 
                 self.logger.info(f"RAG enhancement applied for {sor_type}")
             except Exception as e:
                 self.logger.warning(f"RAG enhancement failed, continuing without it: {e}")
 
-        # Compose final prompt: include system + main for clarity (system may contain strict definitions)
+        # Compose final prompt
         system_prompt = (prompt_config.get("system_prompt") or "").strip()
-        #self.logger.info(f"Base system prompt: {system_prompt}")
         main_prompt = (prompt_config.get("main_prompt") or "").strip()
-        prompt_text = (f"{system_prompt}\n\n---\n\n{main_prompt}" if system_prompt else main_prompt).strip()
-
-        # Debug preview to verify correct prompt dispatch per SOR
-        try:
-            preview = (prompt_text[:300] + ("…" if len(prompt_text) > 300 else ""))
-            self.logger.debug(f"Prompt preview for {sor_type}: {preview}")
-        except Exception:
-            pass
         
-        # If no images, short-circuit with deterministic FAIL rather than ERROR
+        # Save the enhanced main prompt for debugging
+        if prompt_config.get('rag_enhanced'):
+            debug_dir = Path("debug_prompts")
+            debug_dir.mkdir(exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            debug_file = debug_dir / f"{sor_type}_{work_order_info['work_order_number']}_{timestamp}.txt"
+            
+            with open(debug_file, 'w', encoding='utf-8') as f:
+                f.write("=" * 80 + "\n")
+                f.write(f"SOR Type: {sor_type}\n")
+                f.write(f"Work Order: {work_order_info['work_order_number']}\n")
+                f.write(f"Timestamp: {timestamp}\n")
+                f.write(f"RAG Enhanced: {prompt_config.get('rag_enhanced', False)}\n")
+                f.write(f"Reference Count: {prompt_config.get('reference_count', 0)}\n")
+                f.write("=" * 80 + "\n\n")
+                f.write("SYSTEM PROMPT:\n")
+                f.write("-" * 40 + "\n")
+                f.write(system_prompt + "\n\n")
+                f.write("=" * 80 + "\n\n")
+                f.write("MAIN PROMPT (with reference images):\n")
+                f.write("-" * 40 + "\n")
+                f.write(main_prompt + "\n")
+            
+            self.logger.info(f"Saved debug prompt to: {debug_file}")
+        
+        # If no images, short-circuit with deterministic FAIL
         if not images:
-            # Map to boolean field name for this SOR for table generation
             boolean_field = self.sor_config.get("sor_analysis", {}).get("table_generation", {}).get("boolean_fields", {}).get(sor_type)
             result_base = {
                 "sor_type": sor_type,
@@ -245,27 +263,26 @@ class UnifiedSORProcessor:
             return result_base
 
         # Run synchronous Bedrock call in thread pool for true async concurrency
+        # Work order images are passed here - they are NOT mixed with reference images
         loop = asyncio.get_event_loop()
         with concurrent.futures.ThreadPoolExecutor() as executor:
             response = await loop.run_in_executor(
                 executor,
                 lambda: self.bedrock_client.invoke_model_multi_image(
                     prompt=main_prompt,
-                    system_prompt = system_prompt,
-                    images=images,
+                    system_prompt=system_prompt,
+                    images=images,  # These are work order images only
                     max_tokens=model_params.get("max_tokens"),
                     temperature=model_params.get("temperature")
                 )
             )
         
-        # Parse response using shared client
+        # Parse response
         response_text = response.get("text", "")
         from src.clients.bedrock_client import BedrockClient
         response_text = BedrockClient.repair_json_response(response_text)
         
-        # Create simple fallback parser for this SOR type
         fallback_parser = BedrockClient.create_fallback_parser(sor_type)
-        
         parsed_response = self.bedrock_client.parse_json_response(
             response_text,
             fallback_parser

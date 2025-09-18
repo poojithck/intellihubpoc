@@ -20,10 +20,8 @@ class RAGPipeline:
         self.repositories: Dict[str, ReferenceImageRepository] = {}
         self.retrievers: Dict[str, ImageRetriever] = {}
         
-        # Single augmentor for all SOR types with grid configuration
-        grid_config = self.rag_config.get('gridding', {})
-        augmentor_config = {**self.rag_config, **{'gridding': grid_config}}
-        self.augmentor = PromptAugmentor(augmentor_config)
+        # Single augmentor for all SOR types
+        self.augmentor = PromptAugmentor(self.rag_config)
         
         # Initialize repositories for configured SOR types
         self._initialize_sor_repositories()
@@ -42,18 +40,7 @@ class RAGPipeline:
                     'max_height': 800,
                     'quality': 85
                 },
-                'enabled_sor_types': ['MeterConsolidationE4', 'FuseReplacement'],
-                'gridding': {
-                    'enabled': True,
-                    'threshold': 15,
-                    'images_per_grid': 2,
-                    'grid_width': 1200,
-                    'grid_height': 600,
-                    'border_size': 20,
-                    'background_color': '#FFFFFF',
-                    'save_grids': True,
-                    'grid_cache_dir': 'data/reference_grids'
-                }
+                'enabled_sor_types': ['MeterConsolidationE4', 'FuseReplacement']
             }
     
     def _initialize_sor_repositories(self):
@@ -62,48 +49,54 @@ class RAGPipeline:
         base_path = self.rag_config.get('repository_path', 'data/reference_images')
         
         for sor_type in enabled_sors:
-            # Create dedicated repository for this SOR type
             repository = ReferenceImageRepository(
                 base_path=base_path,
                 sor_type=sor_type
             )
             self.repositories[sor_type] = repository
-            
-            # Create dedicated retriever
             self.retrievers[sor_type] = ImageRetriever(repository, self.rag_config)
-            
             self.logger.info(f"Initialized RAG repository for {sor_type} with {len(repository.images)} images")
-    
-    def get_repository(self, sor_type: str) -> Optional[ReferenceImageRepository]:
-        """Get repository for a specific SOR type."""
-        return self.repositories.get(sor_type)
     
     def enhance_sor_analysis(
         self,
         sor_type: str,
         prompt_config: Dict[str, Any],
         work_order_images: List[Dict[str, str]]
-    ) -> tuple[Dict[str, Any], List[Dict[str, str]]]:
+    ) -> Dict[str, Any]:
+        """
+        Enhance SOR analysis by adding reference images to the main prompt.
+        
+        IMPORTANT: This method now returns ONLY the enhanced prompt configuration.
+        Work order images are NOT modified or returned - they are handled separately by the bedrock client.
+        
+        Args:
+            sor_type: Type of SOR analysis
+            prompt_config: Original prompt configuration
+            work_order_images: Work order images (used only for context, not modified)
+            
+        Returns:
+            Enhanced prompt configuration with reference images in main prompt
+        """
         
         if not self.rag_config.get('enabled', True):
             self.logger.info("RAG pipeline disabled")
-            return prompt_config, work_order_images
+            return prompt_config
         
         if not work_order_images:
             self.logger.info(f"No work order images provided for {sor_type}, skipping RAG enhancement")
-            return prompt_config, work_order_images
+            return prompt_config
         
         # Check if this SOR type has RAG enabled
         if sor_type not in self.repositories:
             self.logger.info(f"RAG not configured for {sor_type}")
-            return prompt_config, work_order_images
+            return prompt_config
         
         self.logger.info(f"Enhancing {sor_type} analysis with RAG pipeline")
         
         # Get the specific retriever for this SOR type
         retriever = self.retrievers[sor_type]
         
-        # Retrieve relevant reference images - can now be higher since we'll grid them
+        # Retrieve relevant reference images
         max_refs = self.rag_config.get('max_reference_images', 50)
         reference_images = retriever.retrieve_for_sor_type(
             sor_type=sor_type,
@@ -114,15 +107,10 @@ class RAGPipeline:
         total_refs = sum(len(imgs) for imgs in reference_images.values())
         self.logger.info(f"Retrieved {total_refs} reference images for {sor_type}")
         
-        # Check if gridding will be used
-        grid_threshold = self.rag_config.get('gridding', {}).get('threshold', 15)
-        if total_refs > grid_threshold:
-            self.logger.info(f"Will use gridding for {total_refs} reference images (threshold: {grid_threshold})")
-        
-        # Augment the prompts
+        # Augment the prompts - reference images now go to MAIN prompt
         base_system_prompt = prompt_config.get('system_prompt', '')
         base_main_prompt = prompt_config.get('main_prompt', '')
-        self.logger.info(f"Base system prompt: {base_system_prompt}")
+        
         augmented_system_prompt, augmented_main_prompt = self.augmentor.augment_prompt(
             base_system_prompt,
             base_main_prompt,
@@ -135,14 +123,15 @@ class RAGPipeline:
         enhanced_prompt_config['main_prompt'] = augmented_main_prompt
         enhanced_prompt_config['rag_enhanced'] = True
         enhanced_prompt_config['reference_count'] = total_refs
-        enhanced_prompt_config['gridded'] = total_refs > grid_threshold
         
-        # Combine images (will create grids if needed)
-        combined_images = self.augmentor.combine_images(reference_images, work_order_images)
+        self.logger.info(f"Enhanced main prompt with {total_refs} reference images")
         
-        self.logger.info(f"Final image count for API call: {len(combined_images)}")
-        
-        return enhanced_prompt_config, combined_images
+        # Return ONLY the enhanced prompt config - work order images remain untouched
+        return enhanced_prompt_config
+    
+    def get_repository(self, sor_type: str) -> Optional[ReferenceImageRepository]:
+        """Get repository for a specific SOR type."""
+        return self.repositories.get(sor_type)
     
     def add_reference_image(
         self,
@@ -180,7 +169,6 @@ class RAGPipeline:
     
     def get_statistics(self, sor_type: Optional[str] = None) -> Dict[str, Any]:
         """Get statistics for a specific SOR type or all."""
-        # Import the enum here to access the categories
         from .models import ImageCategory
         
         if sor_type:
@@ -190,7 +178,6 @@ class RAGPipeline:
             repository = self.repositories[sor_type]
             all_images = repository.get_all_images()
         else:
-            # Aggregate all repositories
             all_images = []
             for repository in self.repositories.values():
                 all_images.extend(repository.get_all_images())
@@ -200,9 +187,7 @@ class RAGPipeline:
             'valid_meters': 0,
             'not_meters': 0,
             'valid_fuses': 0,
-            'not_valid_fuses': 0,
-            'grid_threshold': self.rag_config.get('gridding', {}).get('threshold', 15),
-            'will_use_gridding': len(all_images) > self.rag_config.get('gridding', {}).get('threshold', 15)
+            'not_valid_fuses': 0
         }
         
         for img in all_images:
